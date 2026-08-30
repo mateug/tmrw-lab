@@ -15,5 +15,6 @@ MANIFEST = {
         "Ejecución desatendida de la lista."
     ),
     "icono": "📋",
+    "icono_archivo": "lite",
     "crear_frame": _crear_frame,
 }

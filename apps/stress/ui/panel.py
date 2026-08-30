@@ -109,9 +109,9 @@ class StressFrame(ttk.Frame):
         # [1] Guardado de Datos
         self.save = section(left, "[1] Configuración de guardado de medidas", "keithley")
         crear_campo_directorio(self.save, self.v["folder"], 0, "Carpeta de salida:")
-        f_sub = ttk.Frame(self.save, style="Window.TFrame")
+        f_sub = ttk.Frame(self.save, style="Keithley.TFrame")
         f_sub.grid(row=1, column=0, columnspan=3, sticky="w", padx=ui(6), pady=ui(2))
-        ttk.Label(f_sub, text="Nombre del ciclo:").pack(side="left")
+        ttk.Label(f_sub, text="Nombre del ciclo:", style="Keithley.TLabel").pack(side="left")
         ttk.Entry(f_sub, textvariable=self.v["cycle_name"], width=20).pack(side="left", padx=ui(4))
 
         # [2] y [3] Paneles A y B
@@ -130,7 +130,7 @@ class StressFrame(ttk.Frame):
     def _device_panel(self, parent: tk.Misc, key: str, title: str) -> None:
         prefix = key.lower()
         panel = section(parent, title, "params")
-        f_grid = ttk.Frame(panel, style="Window.TFrame")
+        f_grid = ttk.Frame(panel, style="Params.TFrame")
         f_grid.pack(fill="x", padx=ui(6), pady=ui(3))
 
         fields = [
@@ -146,7 +146,7 @@ class StressFrame(ttk.Frame):
         for idx, (label_txt, var_name) in enumerate(fields):
             r = idx // 3
             c = (idx % 3) * 2
-            ttk.Label(f_grid, text=label_txt).grid(row=r, column=c, sticky="w", padx=ui(3), pady=ui(1))
+            ttk.Label(f_grid, text=label_txt, style="Params.TLabel").grid(row=r, column=c, sticky="w", padx=ui(3), pady=ui(1))
             ttk.Entry(f_grid, textvariable=self.v[var_name], width=9).grid(row=r, column=c + 1, sticky="w", padx=ui(3), pady=ui(1))
 
     def _intervals_panel(self, parent: tk.Misc) -> None:
@@ -209,14 +209,14 @@ class StressFrame(ttk.Frame):
         for w in parent.winfo_children():
             w.destroy()
         for idx, (v1, v2) in enumerate(rules):
-            row = ttk.Frame(parent, style="Window.TFrame")
+            row = ttk.Frame(parent, style="Params.TFrame")
             row.pack(fill="x", pady=ui(1))
-            ttk.Label(row, text=f"{first_lbl}:").pack(side="left", padx=ui(2))
+            ttk.Label(row, text=f"{first_lbl}:", style="Params.TLabel").pack(side="left", padx=ui(2))
             ttk.Entry(row, textvariable=v1, width=8).pack(side="left", padx=ui(2))
-            ttk.Label(row, text=f"{sec_lbl}:").pack(side="left", padx=(ui(8), ui(2)))
+            ttk.Label(row, text=f"{sec_lbl}:", style="Params.TLabel").pack(side="left", padx=(ui(8), ui(2)))
             ttk.Entry(row, textvariable=v2, width=8).pack(side="left", padx=ui(2))
             if len(rules) > 1:
-                ttk.Button(row, text="✕", width=3, command=lambda i=idx: self._del_rule(parent, rules, i, first_lbl, sec_lbl)).pack(side="left", padx=ui(4))
+                ttk.Button(row, text="✕", width=3, command=lambda i=idx: self._del_rule(parent, rules, i, first_lbl, sec_lbl), style="Tool.TButton").pack(side="left", padx=ui(4))
 
     def _add_rule(self, rules: list, parent: ttk.Frame, f_lbl: str, s_lbl: str) -> None:
         rules.append((tk.StringVar(value="120"), tk.StringVar(value="60")))

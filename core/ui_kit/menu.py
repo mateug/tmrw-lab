@@ -106,11 +106,19 @@ class WelcomeFrame(ttk.Frame):
 
         cb_theme.bind("<<ComboboxSelected>>", _on_theme)
 
+        # Logo TMRW Lab encima del título
+        self._logo_tmrw = load_logo("tmrw_lab.ico", (ui(80), ui(80)))
+        if self._logo_tmrw:
+            tk.Label(
+                main, image=self._logo_tmrw,
+                bg=t["bg_window"], borderwidth=0, highlightthickness=0
+            ).pack(pady=(ui(10), ui(4)))
+
         # Título
         ttk.Label(
             main, text="TMRW Lab",
             font=ui_font_title_main(), style="Window.TLabel", anchor="center"
-        ).pack(fill="x", pady=(ui(10), ui(2)))
+        ).pack(fill="x", pady=(0, ui(2)))
         ttk.Label(
             main, text="Automatización de medidas de laboratorio",
             font=ui_font_subtitle(), style="Window.TLabel", anchor="center"
@@ -132,6 +140,12 @@ class WelcomeFrame(ttk.Frame):
     def _crear_tarjeta(self, parent, manifest, col_idx, style):
         t = theme_mgr.get_current_theme()
         bg = t.get("bg_card_default", "#e2e8f0")
+
+        # Cargar icono .ico del modo
+        icono_archivo = manifest.get("icono_archivo", "")
+        icono_img = None
+        if icono_archivo:
+            icono_img = load_logo(f"{icono_archivo}.ico", (ui(52), ui(52)))
 
         frame = tk.Frame(
             parent,
@@ -164,7 +178,20 @@ class WelcomeFrame(ttk.Frame):
             wraplength=ui(220),
             justify="center",
             cursor="hand2",
-        ).pack(pady=(0, ui(8)))
+        ).pack(pady=(0, ui(6)))
+
+        # Icono del modo (entre nombre y descripción)
+        if icono_img:
+            lbl_ico = tk.Label(
+                frame,
+                image=icono_img,
+                bg=bg,
+                borderwidth=0,
+                highlightthickness=0,
+                cursor="hand2",
+            )
+            lbl_ico.image = icono_img  # mantener referencia
+            lbl_ico.pack(pady=(0, ui(8)))
 
         # Descripción
         tk.Label(

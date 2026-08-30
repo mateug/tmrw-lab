@@ -15,5 +15,6 @@ MANIFEST = {
         "Ciclos programados por tiempo o Voc."
     ),
     "icono": "⚡",
+    "icono_archivo": "stress",
     "crear_frame": _crear_frame,
 }
