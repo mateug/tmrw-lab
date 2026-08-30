@@ -288,3 +288,82 @@ def leer_buffer(inst, n_puntos, segmento):
 
 def apagar_seguro(inst):
     cancelar_medida_y_apagar(inst)
+
+
+def enviar_go_to_local_visa(inst):
+    """Envía comando GTL (Go To Local) para devolver control frontal al usuario."""
+    if not hasattr(inst, "control_ren"):
+        return False
+
+    modos = []
+    try:
+        modos.append(pyvisa.constants.RENLineOperation.go_to_local)
+    except Exception:
+        pass
+
+    for nombre_constante in (
+        "VI_GPIB_REN_DEASSERT_GTL",
+        "VI_GPIB_REN_ADDRESS_GTL",
+        "VI_GPIB_REN_DEASSERT",
+    ):
+        try:
+            modos.append(getattr(pyvisa.constants, nombre_constante))
+        except Exception:
+            pass
+
+    modos.extend([2, 6, 0])
+
+    for modo in modos:
+        try:
+            inst.control_ren(modo)
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def liberar_control_manual_keithley(recurso_visa: str, timeout_ms: int = 5000):
+    """Libera el Keithley 2450 permitiendo la operación manual en su pantalla táctil."""
+    if not recurso_visa:
+        return
+    rm = None
+    inst = None
+    try:
+        rm = pyvisa.ResourceManager()
+        inst = rm.open_resource(recurso_visa)
+        inst.timeout = int(timeout_ms)
+        inst.write_termination = "\n"
+        inst.read_termination = "\n"
+
+        try:
+            inst.write(":ABOR")
+            time.sleep(0.05)
+        except Exception:
+            pass
+
+        try:
+            inst.write(":SYST:ACC FULL")
+        except Exception:
+            pass
+
+        try:
+            inst.write(":DISP:CLE")
+        except Exception:
+            pass
+
+        try:
+            enviar_go_to_local_visa(inst)
+        except Exception:
+            pass
+    finally:
+        if inst is not None:
+            try:
+                inst.close()
+            except Exception:
+                pass
+        if rm is not None:
+            try:
+                rm.close()
+            except Exception:
+                pass
+

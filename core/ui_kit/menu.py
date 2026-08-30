@@ -112,7 +112,7 @@ class WelcomeFrame(ttk.Frame):
             font=ui_font_title_main(), style="Window.TLabel", anchor="center"
         ).pack(fill="x", pady=(ui(10), ui(2)))
         ttk.Label(
-            main, text="Automatización de medidas fotovoltaicas",
+            main, text="Automatización de medidas de laboratorio",
             font=ui_font_subtitle(), style="Window.TLabel", anchor="center"
         ).pack(fill="x", pady=(0, ui(12)))
         ttk.Separator(main, orient="horizontal").pack(fill="x", pady=(0, ui(15)))
@@ -140,6 +140,7 @@ class WelcomeFrame(ttk.Frame):
             bd=0,
             highlightthickness=2,
             highlightbackground=style["border"],
+            cursor="hand2",
         )
         frame.grid(row=0, column=col_idx, padx=ui(8), pady=ui(8), sticky="nsew")
 
@@ -149,7 +150,8 @@ class WelcomeFrame(ttk.Frame):
             text=f"Modo {col_idx + 1}",
             bg=bg,
             fg=style["num_fg"],
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
+            font=ui_font("Segoe UI", 6.5, "bold"),
+            cursor="hand2",
         ).pack(pady=(ui(16), ui(4)))
 
         # Título
@@ -158,9 +160,10 @@ class WelcomeFrame(ttk.Frame):
             text=manifest["nombre"],
             bg=bg,
             fg=style["title_fg"],
-            font=ui_font("Segoe UI", UIConfig.SIZE_CARD_TITLE, "bold"),
-            wraplength=180,
+            font=ui_font("Segoe UI", 9.5, "bold"),
+            wraplength=ui(220),
             justify="center",
+            cursor="hand2",
         ).pack(pady=(0, ui(8)))
 
         # Descripción
@@ -169,10 +172,11 @@ class WelcomeFrame(ttk.Frame):
             text=manifest.get("descripcion", ""),
             bg=bg,
             fg=t.get("fg_muted", "#475569"),
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL),
-            wraplength=180,
+            font=ui_font("Segoe UI", 5.8),
+            wraplength=ui(220),
             justify="center",
-        ).pack(padx=ui(12), pady=(0, ui(16)))
+            cursor="hand2",
+        ).pack(padx=ui(14), pady=(0, ui(16)), fill="both", expand=True)
 
         # Hover & click
         modo_id = manifest["id"]

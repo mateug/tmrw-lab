@@ -57,7 +57,9 @@ def probar_reles_y_dispositivos(cfg):
         escribir_log(cfg, f"Error en test de hardware: {exc}")
         return result
     finally:
+        relay.off()
         if smu:
+            smu.output_off()
             try:
                 smu.close()
             except Exception:
@@ -66,3 +68,6 @@ def probar_reles_y_dispositivos(cfg):
             relay.close()
         except Exception:
             pass
+
+
+test_relays_and_devices = probar_reles_y_dispositivos

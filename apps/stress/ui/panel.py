@@ -1,631 +1,406 @@
-from collections.abc import Callable
+"""Panel de control e interfaz gráfica para el Modo Stress (degradación A/B)."""
+from __future__ import annotations
+
 import queue
 import threading
 import tkinter as tk
-from tkinter import ttk
-from typing import Any
+from tkinter import messagebox, ttk
+from tkinter.scrolledtext import ScrolledText
 
-from apps.stress.hardware_test import probar_reles_y_dispositivos
-from apps.stress.sequence import run_comparison_cycle
-from core.instrument.ngu401 import NGU401
-from core.instrument import registry
 from core.exceptions import MedidaAbortadaPorUsuario
+from core.instrument.ngu401 import (
+    NGU401,
+    close_ngu401,
+    connect_ngu401,
+    liberar_control_manual_ngu401,
+    recuperar_control_automatico_ngu401,
+)
 from core.plot.plotter import generar_imagen_tk_curvas_iv_pv
-from core.ui_kit.scaler import UIConfig, scaler, ui, ui_font_console
-from core.ui_kit.shared import ScrollableFrame, directory_field, header, section, crear_barra_superior
+from core.ui_kit.scaler import (
+    UIConfig,
+    ui,
+    ui_font,
+    ui_font_console,
+    ui_font_label,
+    ui_font_section_header,
+)
+from core.ui_kit.shared import (
+    crear_barra_superior,
+    crear_campo_directorio,
+    crear_seccion_frame as section,
+    mostrar_error,
+    mostrar_info,
+)
 from core.ui_kit.theme import theme_mgr
 
-
-Config = dict[str, Any]
-Message = tuple[str, Any]
-LogCallback = Callable[[str], None]
-
-
-from apps.stress.config import DEFAULT_CONFIG
+from apps.stress.config import get_default_config
+from apps.stress.hardware_test import test_relays_and_devices
+from apps.stress.sequence import run_cycle, run_sequence
 
 
-class DegradationModeFrame(ttk.Frame):
-    def __init__(self, master: tk.Misc, cfg: Config | None = None, callback_volver: Callable | None = None) -> None:
-        super().__init__(master)
-        self.cfg = cfg if cfg is not None else DEFAULT_CONFIG.copy()
+class StressFrame(ttk.Frame):
+    """Panel principal de degradación comparativa A/B."""
+
+    def __init__(self, master: tk.Misc, callback_volver=None, **kwargs) -> None:
+        super().__init__(master, **kwargs)
         self.callback_volver = callback_volver
-        self.q: queue.Queue[Message] = queue.Queue()
+        self.cfg = get_default_config()
+        self.q: queue.Queue[tuple[str, object]] = queue.Queue()
+        self.time_rules: list[tuple[tk.StringVar, tk.StringVar]] = []
+        self.slope_rules: list[tuple[tk.StringVar, tk.StringVar]] = []
         self.modo_automatico = True
         self._operacion_activa = False
         self._boton_modo: ttk.Button | None = None
-        self._imagenes_log: list[Any] = []
-        self._poll_job: str | None = None
-        self._vars()
-        crear_barra_superior(
-            self,
-            "TMRW Lab — Stress (Degradación A/B)",
-            callback_volver,
-        )
-        self.scroll = ScrollableFrame(self)
-        self.scroll.pack(fill="both", expand=True)
-        self._ui(self.scroll.scroll_content if hasattr(self.scroll, "scroll_content") else self.scroll.content)
-        self._poll_job = self.after(100, self.poll)
+        self.fig_actual = None
+        self.v: dict[str, tk.Variable] = {}
 
-    def destroy(self) -> None:
-        if self._poll_job is not None:
-            try:
-                self.after_cancel(self._poll_job)
-            except tk.TclError:
-                pass
-            self._poll_job = None
-        super().destroy()
+        self._init_variables()
+        self._create_ui()
+        self.after(100, self.poll)
 
     @property
     def operacion_activa(self) -> bool:
         """Indica si existe una operación de hardware en curso."""
         return self._operacion_activa
 
-    def apply_responsive_scaling(self) -> None:
-        """Actualiza los widgets que no dependen del reflow completo de la vista."""
-        try:
-            if hasattr(self, "log") and self.log.winfo_exists():
-                self.log.configure(
-                    font=ui_font_console(),
-                    height=max(6, scaler.scale(UIConfig.CONSOLE_HEIGHT)),
-                )
-        except tk.TclError:
-            pass
-
-    def _vars(self) -> None:
-        cfg = self.cfg
-
-        def create_variable(value: Any) -> tk.StringVar:
-            return tk.StringVar(value=str(value if value is not None else ""))
-
-        self.v: dict[str, tk.StringVar] = {
-            "folder": create_variable(cfg["carpeta_salida"]),
-            "exp": create_variable(cfg["nombre_experimento"]),
-            "visa": create_variable(cfg["smu"]["recurso_visa"]),
-            "port": create_variable(cfg["rele"]["puerto_serie"]),
-            "mode": create_variable(cfg["modo_medida"]),
+    def _init_variables(self) -> None:
+        c = self.cfg
+        self.v = {
+            "folder": tk.StringVar(value=c.get("carpeta_salida", "")),
+            "cycle_name": tk.StringVar(value=c.get("nombre_carpeta_medida", "")),
+            "port": tk.StringVar(value=c.get("rele", {}).get("puerto_serie", "COM5")),
+            "visa": tk.StringVar(value=c.get("smu", {}).get("recurso_visa", "")),
+            "fallback_interval": tk.StringVar(
+                value=str(c.get("programacion", {}).get("intervalo_fallback_s", 60.0))
+            ),
+            "window_size": tk.StringVar(
+                value=str(c.get("programacion", {}).get("ventana_muestras_pendiente", 3))
+            ),
         }
-        self.dev: dict[str, dict[str, tk.StringVar]] = {}
-        for device in "AB":
-            curve = cfg["curva_iv"][device]
-            self.dev[device] = {
-                key: create_variable(value) for key, value in curve.items()
-            }
-            self.dev[device]["nombre"] = create_variable(
-                cfg["dispositivos"][device]["nombre"]
-            )
+        for prefix in ("a", "b"):
+            block = c.get(f"dispositivo_{prefix}", {})
+            directa = block.get("directa", {})
+            inversa = block.get("inversa", {})
+            self.v[f"{prefix}_v_ini_dir_mV"] = tk.StringVar(value=str(directa.get("v_inicial_mV", 0.0)))
+            self.v[f"{prefix}_v_fin_dir_mV"] = tk.StringVar(value=str(directa.get("v_final_mV", 600.0)))
+            self.v[f"{prefix}_paso_dir_mV"] = tk.StringVar(value=str(directa.get("paso_mV", 10.0)))
+            self.v[f"{prefix}_v_ini_inv_mV"] = tk.StringVar(value=str(inversa.get("v_inicial_mV", 0.0)))
+            self.v[f"{prefix}_v_fin_inv_V"] = tk.StringVar(value=str(inversa.get("v_final_V", -0.5)))
+            self.v[f"{prefix}_paso_inv_mV"] = tk.StringVar(value=str(inversa.get("paso_mV", 10.0)))
+            self.v[f"{prefix}_i_max_uA"] = tk.StringVar(value=str(block.get("i_max_uA", 10.0)))
 
-    def field(
-        self,
-        parent: tk.Misc,
-        label: str,
-        variable: tk.StringVar,
-        row: int,
-        column: int,
-    ) -> None:
-        ttk.Label(parent, text=label).grid(
-            row=row,
-            column=column,
-            sticky="w",
-            pady=ui(UIConfig.PADDING_GRID_VERTICAL),
-        )
-        ttk.Entry(parent, textvariable=variable, width=10).grid(
-            row=row,
-            column=column + 1,
-            sticky="w",
-            padx=(ui(UIConfig.PADDING_ENTRY_HORIZONTAL), ui(UIConfig.PADDING_NOTE_BOTTOM)),
-            pady=ui(UIConfig.PADDING_GRID_VERTICAL),
+    def _create_ui(self) -> None:
+        crear_barra_superior(
+            self,
+            "Modo 4: Stress — Degradación Comparativa A/B",
+            self.callback_volver,
         )
 
-    def _ui(self, parent: tk.Misc) -> None:
-        parent.columnconfigure(0, weight=3)
-        parent.columnconfigure(1, weight=2)
-        parent.rowconfigure(0, weight=1)
+        body = ttk.Frame(self, style="Window.TFrame")
+        body.pack(fill="both", expand=True, padx=ui(6), pady=ui(4))
 
-        left = ttk.Frame(parent)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, ui(UIConfig.PADDING_GRID_HORIZONTAL)))
-        right = ttk.Frame(parent)
-        right.grid(row=0, column=1, sticky="nsew", padx=(ui(UIConfig.PADDING_GRID_HORIZONTAL), 0))
+        left = ttk.Frame(body, style="Window.TFrame")
+        left.pack(side="left", fill="both", expand=True, padx=(0, ui(4)))
 
-        self.save = section(
-            left,
-            "[1] Configuración de guardado de medidas",
-            "keithley",
-        )
-        directory_field(self.save, self.v["folder"], 0)
-        ttk.Label(self.save, text="Nombre de carpeta:").grid(
-            row=1,
-            column=0,
-            sticky="w",
-        )
-        ttk.Entry(self.save, textvariable=self.v["exp"]).grid(
-            row=1,
-            column=1,
-            columnspan=2,
-            sticky="ew",
-            padx=ui(UIConfig.PADDING_FIELD_HORIZONTAL),
-        )
+        right = ttk.Frame(body, width=ui(460), style="Window.TFrame")
+        right.pack(side="right", fill="both", expand=False, padx=(ui(4), 0))
+        right.pack_propagate(False)
 
-        self.device_panel(
-            left,
-            "A",
-            "[2] Curva IV â€” Estructura A (entradas NC de los relés)",
-        )
-        self.device_panel(
-            left,
-            "B",
-            "[3] Curva IV â€” Estructura B (entradas NO de los relés)",
-        )
-        self.intervals(left)
-        self.control(left)
-        self.terminal(right)
+        # [1] Guardado de Datos
+        self.save = section(left, "[1] Configuración de guardado de medidas", "keithley")
+        crear_campo_directorio(self.save, self.v["folder"], 0, "Carpeta de salida:")
+        f_sub = ttk.Frame(self.save, style="Window.TFrame")
+        f_sub.grid(row=1, column=0, columnspan=3, sticky="w", padx=ui(6), pady=ui(2))
+        ttk.Label(f_sub, text="Nombre del ciclo:").pack(side="left")
+        ttk.Entry(f_sub, textvariable=self.v["cycle_name"], width=20).pack(side="left", padx=ui(4))
 
-    def device_panel(self, parent: tk.Misc, device: str, title: str) -> None:
+        # [2] y [3] Paneles A y B
+        self._device_panel(left, "A", "[2] Curva IV — Estructura A (Entradas NC de los relés)")
+        self._device_panel(left, "B", "[3] Curva IV — Estructura B (Entradas NO de los relés)")
+
+        # [4] Intervalos
+        self._intervals_panel(left)
+
+        # [5] Control
+        self._control_panel(left)
+
+        # Panel Derecho: Consola y Gráfica
+        self._results_panel(right)
+
+    def _device_panel(self, parent: tk.Misc, key: str, title: str) -> None:
+        prefix = key.lower()
         panel = section(parent, title, "params")
-        variables = self.dev[device]
-        ttk.Label(panel, text="Nombre:").grid(
-            row=0,
-            column=0,
-            sticky="w",
-        )
-        ttk.Entry(
-            panel,
-            textvariable=variables["nombre"],
-            width=26,
-        ).grid(row=0, column=1, sticky="w", padx=ui(UIConfig.PADDING_GRID_HORIZONTAL))
-        ttk.Label(panel, text="Modo:").grid(
-            row=0,
-            column=2,
-            sticky="w",
-        )
-        ttk.Combobox(
-            panel,
-            textvariable=self.v["mode"],
-            values=["completa", "directa", "inversa"],
-            state="readonly",
-            width=10,
-        ).grid(row=0, column=3, sticky="w")
-        self.field(panel, "V ini directa (mV):", variables["v_ini_dir_mV"], 1, 0)
-        self.field(panel, "V final directa (mV):", variables["v_fin_dir_mV"], 1, 2)
-        self.field(panel, "Paso directa (mV):", variables["paso_dir_mV"], 1, 4)
-        self.field(panel, "V ini inversa (mV):", variables["v_ini_inv_mV"], 2, 0)
-        self.field(panel, "V final inversa (V):", variables["v_fin_inv_V"], 2, 2)
-        self.field(panel, "Paso inversa (mV):", variables["paso_inv_mV"], 2, 4)
-        self.field(panel, "I máxima (ÂµA):", variables["i_max_uA"], 3, 0)
+        f_grid = ttk.Frame(panel, style="Window.TFrame")
+        f_grid.pack(fill="x", padx=ui(6), pady=ui(3))
 
-    def intervals(self, parent: tk.Misc) -> None:
+        fields = [
+            ("V ini directa (mV):", f"{prefix}_v_ini_dir_mV"),
+            ("V fin directa (mV):", f"{prefix}_v_fin_dir_mV"),
+            ("Paso directa (mV):", f"{prefix}_paso_dir_mV"),
+            ("V ini inversa (mV):", f"{prefix}_v_ini_inv_mV"),
+            ("V final inversa (V):", f"{prefix}_v_fin_inv_V"),
+            ("Paso inversa (mV):", f"{prefix}_paso_inv_mV"),
+            ("I máxima (µA):", f"{prefix}_i_max_uA"),
+        ]
+
+        for idx, (label_txt, var_name) in enumerate(fields):
+            r = idx // 3
+            c = (idx % 3) * 2
+            ttk.Label(f_grid, text=label_txt).grid(row=r, column=c, sticky="w", padx=ui(3), pady=ui(1))
+            ttk.Entry(f_grid, textvariable=self.v[var_name], width=9).grid(row=r, column=c + 1, sticky="w", padx=ui(3), pady=ui(1))
+
+    def _intervals_panel(self, parent: tk.Misc) -> None:
         panel = section(parent, "[4] Selección de intervalos temporales", "params")
-        programming = self.cfg.get("programacion", {})
+        prog = self.cfg.get("programacion", {})
+
         self.time_rules = [
-            (
-                tk.StringVar(value=str(rule["intervalo_s"])),
-                tk.StringVar(value=str(rule["hasta_min"])),
-            )
-            for rule in programming.get("tramos_tiempo", [])
+            (tk.StringVar(value=str(r.get("hasta_min", 60))), tk.StringVar(value=str(r.get("intervalo_s", 30))))
+            for r in prog.get("intervalos_por_tiempo", [{"hasta_min": 60, "intervalo_s": 30}])
         ]
         self.slope_rules = [
-            (
-                tk.StringVar(value=str(rule["umbral_V_por_min"])),
-                tk.StringVar(value=str(rule["intervalo_s"])),
-            )
-            for rule in programming.get("tramos_pendiente_voc", [])
+            (tk.StringVar(value=str(r.get("umbral_dvoc_dt", 0.005))), tk.StringVar(value=str(r.get("intervalo_s", 20))))
+            for r in prog.get("intervalos_por_pendiente_voc", [{"umbral_dvoc_dt": 0.005, "intervalo_s": 20}])
         ]
-        self.time_rows: ttk.Frame
-        self.slope_rows: ttk.Frame
+
         self.tabs = ttk.Notebook(panel)
-        self.tabs.pack(fill="x", expand=True, pady=ui(UIConfig.PADDING_TAB_CONTAINER_VERTICAL))
-        time_tab = ttk.Frame(
-            self.tabs,
-            padding=ui(UIConfig.PADDING_TAB),
-            style="Params.TFrame",
-        )
-        stabilization_tab = ttk.Frame(
-            self.tabs,
-            padding=ui(UIConfig.PADDING_TAB),
-            style="Params.TFrame",
-        )
-        self.tabs.add(time_tab, text="Intervalos por tiempo")
-        self.tabs.add(
-            stabilization_tab,
-            text="Intervalos por estabilización",
-        )
-        ttk.Label(
-            time_tab,
-            text=(
-                "Modo por tiempo: El intervalo se aplica hasta alcanzar cada lí­mite temporal. "
-                "El último lí­mite marca el tiempo final del experimento; cuando termine la medida "
-                "que esté en curso después de superarlo, la secuencia se detiene."
-            ),
-            style="Params.TLabel",
-            wraplength=ui(UIConfig.WRAPLENGTH_SECTION),
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, ui(UIConfig.PADDING_NOTE_BOTTOM)))
-        ttk.Label(time_tab, text="Intervalo (s)").grid(row=1, column=0, sticky="w")
-        ttk.Label(time_tab, text="Lí­mite máximo (min)").grid(row=1, column=1, sticky="w")
-        self.time_rows = ttk.Frame(time_tab)
-        self.time_rows.grid(row=2, column=0, columnspan=3, sticky="ew")
-        self._render_rule_rows(self.time_rows, self.time_rules, "Lí­mite", "Intervalo")
-        ttk.Button(
-            time_tab,
-            text="Añadir tramo",
-            command=lambda: self._add_rule(self.time_rules, self.time_rows, "Lí­mite", "Intervalo"),
-        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=ui(UIConfig.PADDING_GRID_HORIZONTAL))
+        self.tabs.pack(fill="x", padx=ui(4), pady=ui(2))
 
-        ttk.Label(
-            stabilization_tab,
-            text=(
-                "Modo por pendiente de Voc: el intervalo se selecciona "
-                "según la velocidad de cambio de Voc. El cambio se aplica "
-                "cuando ambas estructuras alcanzan el umbral."
-            ),
-            style="Params.TLabel",
-            wraplength=ui(UIConfig.WRAPLENGTH_SECTION),
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, ui(UIConfig.PADDING_NOTE_BOTTOM)))
-        ttk.Label(stabilization_tab, text="Umbral |dVoc/dt| (V/min)").grid(
-            row=1, column=0, sticky="w"
-        )
-        ttk.Label(stabilization_tab, text="Intervalo (s)").grid(
-            row=1, column=1, sticky="w"
-        )
-        self.slope_rows = ttk.Frame(stabilization_tab)
-        self.slope_rows.grid(row=2, column=0, columnspan=3, sticky="ew")
-        self._render_rule_rows(
-            self.slope_rows,
-            self.slope_rules,
-            "Umbral",
-            "Intervalo",
-        )
-        ttk.Button(
-            stabilization_tab,
-            text="Añadir umbral",
-            command=lambda: self._add_rule(
-                self.slope_rules,
-                self.slope_rows,
-                "Umbral",
-                "Intervalo",
-            ),
-        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=ui(UIConfig.PADDING_GRID_HORIZONTAL))
-        ttk.Label(
-            stabilization_tab,
-            text="La pendiente se calcula en V/min sobre las últimas muestras válidas.",
-            style="Params.TLabel",
-            wraplength=ui(UIConfig.WRAPLENGTH_SECTION),
-        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(ui(UIConfig.PADDING_GRID_HORIZONTAL), 0))
+        # Tab tiempo
+        t_tab = ttk.Frame(self.tabs, style="Window.TFrame")
+        self.tabs.add(t_tab, text="Intervalos por tiempo")
+        self.time_rows = ttk.Frame(t_tab, style="Window.TFrame")
+        self.time_rows.pack(fill="x", padx=ui(4), pady=ui(2))
+        self._render_rule_rows(self.time_rows, self.time_rules, "Límite (min)", "Intervalo (s)")
+        ttk.Button(t_tab, text="+ Añadir tramo", command=lambda: self._add_rule(self.time_rules, self.time_rows, "Límite (min)", "Intervalo (s)")).pack(anchor="w", padx=ui(4), pady=ui(2))
 
-    def _render_rule_rows(
-        self,
-        parent: tk.Misc,
-        rules: list[tuple[tk.StringVar, tk.StringVar]],
-        first_label: str,
-        second_label: str,
-    ) -> None:
-        for child in parent.winfo_children():
-            child.destroy()
-        for row, (first, second) in enumerate(rules):
-            ttk.Entry(parent, textvariable=first, width=14).grid(
-                row=row, column=0, sticky="w", padx=(0, ui(UIConfig.PADDING_GRID_HORIZONTAL)), pady=ui(UIConfig.PADDING_GRID_VERTICAL)
-            )
-            ttk.Entry(parent, textvariable=second, width=14).grid(
-                row=row, column=1, sticky="w", padx=(0, ui(UIConfig.PADDING_GRID_HORIZONTAL)), pady=ui(UIConfig.PADDING_GRID_VERTICAL)
-            )
-            ttk.Button(
-                parent,
-                text="Eliminar",
-                command=lambda index=row: self._remove_rule(
-                    rules, parent, index, first_label, second_label
-                ),
-            ).grid(row=row, column=2, sticky="w", pady=ui(UIConfig.PADDING_GRID_VERTICAL))
+        # Tab pendiente
+        s_tab = ttk.Frame(self.tabs, style="Window.TFrame")
+        self.tabs.add(s_tab, text="Intervalos por estabilización (dVoc/dt)")
+        self.slope_rows = ttk.Frame(s_tab, style="Window.TFrame")
+        self.slope_rows.pack(fill="x", padx=ui(4), pady=ui(2))
+        self._render_rule_rows(self.slope_rows, self.slope_rules, "Umbral Voc (V/min)", "Intervalo (s)")
+        ttk.Button(s_tab, text="+ Añadir umbral", command=lambda: self._add_rule(self.slope_rules, self.slope_rows, "Umbral Voc (V/min)", "Intervalo (s)")).pack(anchor="w", padx=ui(4), pady=ui(2))
 
-    def _add_rule(
-        self,
-        rules: list[tuple[tk.StringVar, tk.StringVar]],
-        parent: ttk.Frame,
-        first_label: str,
-        second_label: str,
-    ) -> None:
-        rules.append((tk.StringVar(value=""), tk.StringVar(value="")))
-        if parent is not None:
-            self._render_rule_rows(parent, rules, first_label, second_label)
+    def _render_rule_rows(self, parent: ttk.Frame, rules: list, first_lbl: str, sec_lbl: str) -> None:
+        for w in parent.winfo_children():
+            w.destroy()
+        for idx, (v1, v2) in enumerate(rules):
+            row = ttk.Frame(parent, style="Window.TFrame")
+            row.pack(fill="x", pady=ui(1))
+            ttk.Label(row, text=f"{first_lbl}:").pack(side="left", padx=ui(2))
+            ttk.Entry(row, textvariable=v1, width=8).pack(side="left", padx=ui(2))
+            ttk.Label(row, text=f"{sec_lbl}:").pack(side="left", padx=(ui(8), ui(2)))
+            ttk.Entry(row, textvariable=v2, width=8).pack(side="left", padx=ui(2))
+            if len(rules) > 1:
+                ttk.Button(row, text="✕", width=3, command=lambda i=idx: self._del_rule(parent, rules, i, first_lbl, sec_lbl)).pack(side="left", padx=ui(4))
 
-    def _remove_rule(
-        self,
-        rules: list[tuple[tk.StringVar, tk.StringVar]],
-        parent: tk.Misc,
-        index: int,
-        first_label: str,
-        second_label: str,
-    ) -> None:
-        if len(rules) <= 1:
-            return
-        rules.pop(index)
-        self._render_rule_rows(parent, rules, first_label, second_label)
+    def _add_rule(self, rules: list, parent: ttk.Frame, f_lbl: str, s_lbl: str) -> None:
+        rules.append((tk.StringVar(value="120"), tk.StringVar(value="60")))
+        self._render_rule_rows(parent, rules, f_lbl, s_lbl)
 
-    def control(self, parent: tk.Misc) -> None:
-        panel = section(parent, "[5] Control de medida", "control")
-        ttk.Label(panel, text="Arduino (COM):").grid(
-            row=0,
-            column=0,
-            sticky="w",
-        )
-        ttk.Entry(
-            panel,
-            textvariable=self.v["port"],
-            width=12,
-        ).grid(row=0, column=1, sticky="w", padx=ui(UIConfig.PADDING_GRID_HORIZONTAL))
-        ttk.Label(panel, text="NGU401 (VISA):").grid(
-            row=0,
-            column=2,
-            sticky="w",
-        )
-        ttk.Entry(
-            panel,
-            textvariable=self.v["visa"],
-            width=28,
-        ).grid(row=0, column=3, sticky="w", padx=ui(UIConfig.PADDING_GRID_HORIZONTAL))
-        self.startb = ttk.Button(
-            panel,
-            text="â–¶ INICIAR MEDIDA",
-            style="Primary.TButton",
-            command=self.start_measurement,
-        )
-        self.startb.grid(row=1, column=0, pady=ui(UIConfig.PADDING_CONTROL_VERTICAL), sticky="w")
-        ttk.Button(
-            panel,
-            text="â–  DETENER / ABORTAR",
-            style="Danger.TButton",
-            command=self.abort,
-        ).grid(row=1, column=1, pady=ui(UIConfig.PADDING_CONTROL_VERTICAL), padx=ui(UIConfig.PADDING_GRID_HORIZONTAL))
-        ttk.Button(
-            panel,
-            text="âš¡ MEDIDA RÁPIDA",
-            style="Quick.TButton",
-            command=self.quick_measurement,
-        ).grid(row=1, column=2, pady=ui(UIConfig.PADDING_CONTROL_VERTICAL), padx=ui(UIConfig.PADDING_GRID_HORIZONTAL))
-        self._boton_modo = ttk.Button(
-            panel,
-            text="âš™ Modo manual / automático",
-            style="Tool.TButton",
-            command=self.toggle_manual,
-        )
-        self._boton_modo.grid(row=1, column=3, pady=ui(UIConfig.PADDING_CONTROL_VERTICAL), padx=ui(UIConfig.PADDING_GRID_HORIZONTAL))
-        self.testb = ttk.Button(
-            panel,
-            text="ðŸ”Œ TESTEAR RELÉS Y ESTRUCTURAS",
-            style="Tool.TButton",
-            command=self.test,
-        )
-        self.testb.grid(row=1, column=4, pady=ui(UIConfig.PADDING_CONTROL_VERTICAL), padx=ui(UIConfig.PADDING_GRID_HORIZONTAL))
+    def _del_rule(self, parent: ttk.Frame, rules: list, idx: int, f_lbl: str, s_lbl: str) -> None:
+        if len(rules) > 1:
+            rules.pop(idx)
+            self._render_rule_rows(parent, rules, f_lbl, s_lbl)
 
-    def terminal(self, parent: tk.Misc) -> None:
-        parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(0, weight=1)
-        panel = ttk.LabelFrame(
-            parent,
-            text=" [6] Terminal de salida ",
-            padding=ui(UIConfig.PADDING_SECTION),
-            style="Results.TLabelframe",
+    def _control_panel(self, parent: tk.Misc) -> None:
+        t = theme_mgr.get_current_theme()
+        panel = section(parent, "[5] Control de Medida", "control")
+
+        f_conns = ttk.Frame(panel, style="Window.TFrame")
+        f_conns.pack(fill="x", padx=ui(6), pady=ui(2))
+        ttk.Label(f_conns, text="Arduino (COM):").pack(side="left")
+        ttk.Entry(f_conns, textvariable=self.v["port"], width=8).pack(side="left", padx=(ui(2), ui(12)))
+        ttk.Label(f_conns, text="NGU401 (VISA):").pack(side="left")
+        ttk.Entry(f_conns, textvariable=self.v["visa"], width=22).pack(side="left", padx=ui(2))
+
+        f_btns = ttk.Frame(panel, style="Window.TFrame")
+        f_btns.pack(fill="x", padx=ui(4), pady=ui(4))
+
+        self.btn_iniciar = tk.Button(
+            f_btns, text="▶ INICIAR SECUENCIA",
+            bg=t["buttons"]["primary_bg"], fg=t["buttons"]["primary_fg"],
+            activebackground=t["buttons"]["primary_hover"], activeforeground="#ffffff",
+            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
+            command=self.start_measurement, padx=ui(10), pady=ui(4), relief="flat", cursor="hand2",
         )
-        panel.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-            padx=ui(UIConfig.PADDING_SECTION_OUTER_HORIZONTAL),
-            pady=ui(UIConfig.PADDING_SECTION_OUTER_VERTICAL),
+        self.btn_iniciar.pack(side="left", padx=ui(3))
+
+        self.btn_rapida = tk.Button(
+            f_btns, text="⚡ MEDIDA RÁPIDA",
+            bg=t["buttons"]["quick_bg"], fg=t["buttons"]["quick_fg"],
+            activebackground=t["buttons"]["quick_hover"], activeforeground="#ffffff",
+            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
+            command=self.quick_measurement, padx=ui(8), pady=ui(4), relief="flat", cursor="hand2",
         )
-        theme = theme_mgr.get_current_theme()
-        self.log = tk.Text(
-            panel,
-            height=max(6, scaler.scale(UIConfig.CONSOLE_HEIGHT)),
-            bg=theme["results"]["bg_console"],
-            fg=theme["results"]["fg_console"],
-            insertbackground=theme["results"]["fg_console"],
-            font=ui_font_console(),
-            wrap="word",
+        self.btn_rapida.pack(side="left", padx=ui(3))
+
+        self.btn_abortar = tk.Button(
+            f_btns, text="⏹ DETENER / ABORTAR",
+            bg=t["buttons"]["danger_bg"], fg=t["buttons"]["danger_fg"],
+            activebackground=t["buttons"]["danger_hover"], activeforeground="#ffffff",
+            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
+            command=self.abort, padx=ui(8), pady=ui(4), relief="flat", cursor="hand2",
             state="disabled",
         )
-        self.log.pack(fill="both", expand=True)
-        self.log_msg(
-            "Interfaz preparada. Configura los parámetros y, si procede, "
-            "ejecuta el test de relés."
+        self.btn_abortar.pack(side="left", padx=ui(3))
+
+        self._boton_modo = tk.Button(
+            f_btns, text="⚙ Modo manual / automático",
+            bg=t["buttons"]["tool_bg"], fg=t["buttons"]["tool_fg"],
+            activebackground=t["buttons"]["tool_hover"], activeforeground="#ffffff",
+            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL),
+            command=self.toggle_manual, padx=ui(6), pady=ui(4), relief="flat", cursor="hand2",
         )
+        self._boton_modo.pack(side="left", padx=ui(3))
+
+        self.btn_test = tk.Button(
+            f_btns, text="🔌 TESTEAR RELÉS Y ESTRUCTURAS",
+            bg=t["buttons"]["tool_bg"], fg=t["buttons"]["tool_fg"],
+            activebackground=t["buttons"]["tool_hover"], activeforeground="#ffffff",
+            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL),
+            command=self.test, padx=ui(6), pady=ui(4), relief="flat", cursor="hand2",
+        )
+        self.btn_test.pack(side="left", padx=ui(3))
+
+    def _results_panel(self, parent: tk.Misc) -> None:
+        t = theme_mgr.get_current_theme()
+        res_c = t.get("results", {})
+        f_res = section(parent, "Resultados y Progreso", "results")
+        f_res.pack(fill="both", expand=True)
+
+        self.txt_log = ScrolledText(
+            f_res,
+            font=ui_font_console(),
+            bg=res_c.get("bg_console", "#1e293b"),
+            fg=res_c.get("fg_console", "#f8fafc"),
+            insertbackground="#0284c7",
+            borderwidth=1,
+            relief="solid",
+            height=UIConfig.CONSOLE_HEIGHT,
+        )
+        self.txt_log.pack(fill="both", expand=True, pady=ui(4))
+        self.txt_log.insert("end", "Modo Stress preparado. Configura los parámetros y pulsa ▶ INICIAR SECUENCIA o 🔌 TESTEAR.\n")
+
+    def log_msg(self, msg: str) -> None:
+        self.q.put(("log", msg))
 
     def recoger_configuracion(self) -> None:
-        cfg = self.cfg
-        programming = cfg.setdefault("programacion", {})
-        cfg["carpeta_salida"] = self.v["folder"].get()
-        cfg["nombre_experimento"] = self.v["exp"].get()
-        cfg["smu"]["recurso_visa"] = self.v["visa"].get() or "AUTO"
-        cfg["rele"]["puerto_serie"] = self.v["port"].get()
-        cfg["modo_medida"] = self.v["mode"].get()
-        programming["modo"] = (
-            "por_tiempo" if self.tabs.index("current") == 0 else "por_pendiente_voc"
-        )
-        programming["tramos_tiempo"] = [
-            {"intervalo_s": first.get(), "hasta_min": second.get()}
-            for first, second in self.time_rules
-        ]
-        programming["tramos_pendiente_voc"] = [
-            {"umbral_V_por_min": first.get(), "intervalo_s": second.get()}
-            for first, second in self.slope_rules
-        ]
-        for device in "AB":
-            cfg["dispositivos"][device]["nombre"] = self.dev[device][
-                "nombre"
-            ].get()
-            for key, variable in self.dev[device].items():
-                if key != "nombre":
-                    cfg["curva_iv"][device][key] = variable.get()
+        c = self.cfg
+        c["carpeta_salida"] = self.v["folder"].get().strip()
+        c["nombre_carpeta_medida"] = self.v["cycle_name"].get().strip()
+        c["rele"]["puerto_serie"] = self.v["port"].get().strip()
+        c["smu"]["recurso_visa"] = self.v["visa"].get().strip()
 
-    def log_msg(self, message: str) -> None:
-        self.q.put(("log", str(message)))
-
-    def _mostrar_grafica(self, datos: Any, cfg: Config) -> None:
-        try:
-            imagen = generar_imagen_tk_curvas_iv_pv(datos, cfg)
-            if imagen is None:
-                return
-            self._imagenes_log.append(imagen)
-            self.log.configure(state="normal")
-            self.log.insert("end", "\n")
-            self.log.image_create("end", image=imagen)
-            self.log.insert("end", "\n")
-            self.log.see("end")
-            self.log.configure(state="disabled")
-        except Exception as error:
-            self.log_msg(f"Aviso: no se pudo mostrar la curva en la terminal: {error}")
+        for key in ("a", "b"):
+            prefix = key.lower()
+            block = c[f"dispositivo_{prefix}"]
+            block["directa"]["v_inicial_mV"] = float(self.v[f"{prefix}_v_ini_dir_mV"].get() or 0.0)
+            block["directa"]["v_final_mV"] = float(self.v[f"{prefix}_v_fin_dir_mV"].get() or 600.0)
+            block["directa"]["paso_mV"] = float(self.v[f"{prefix}_paso_dir_mV"].get() or 10.0)
+            block["inversa"]["v_inicial_mV"] = float(self.v[f"{prefix}_v_ini_inv_mV"].get() or 0.0)
+            block["inversa"]["v_final_V"] = float(self.v[f"{prefix}_v_fin_inv_V"].get() or -0.5)
+            block["inversa"]["paso_mV"] = float(self.v[f"{prefix}_paso_inv_mV"].get() or 10.0)
+            block["i_max_uA"] = float(self.v[f"{prefix}_i_max_uA"].get() or 10.0)
 
     def start_measurement(self) -> None:
-        self._launch_cycle(guardar_archivos=True)
+        if not self.modo_automatico or self._operacion_activa:
+            return
+        self.recoger_configuracion()
+        self.cfg["evento_aborto"] = threading.Event()
+        self.cfg["log_callback"] = self.log_msg
+        self._operacion_activa = True
+        self.btn_iniciar.configure(state="disabled")
+        self.btn_rapida.configure(state="disabled")
+        self.btn_abortar.configure(state="normal")
+        self.log_msg("Iniciando secuencia de degradación...")
+        threading.Thread(target=self._run_sequence, daemon=True).start()
+
+    def _run_sequence(self) -> None:
+        try:
+            run_sequence(self.cfg)
+        except MedidaAbortadaPorUsuario as exc:
+            self.log_msg(f"[⏹] Secuencia abortada: {exc}")
+        except Exception as exc:
+            self.log_msg(f"[ERROR] Fallo en secuencia: {exc}")
+        finally:
+            self.q.put(("seq_done", None))
 
     def quick_measurement(self) -> None:
-        self._launch_cycle(guardar_archivos=False)
-
-    def _launch_cycle(self, guardar_archivos: bool) -> None:
         if not self.modo_automatico or self._operacion_activa:
-            self.log_msg("Activa el modo automático y espera a que termine la operación actual.")
             return
         self.recoger_configuracion()
         self.cfg["evento_aborto"] = threading.Event()
         self.cfg["log_callback"] = self.log_msg
-        self.cfg["grafica_callback"] = lambda datos, cfg: self.q.put(("grafica", (datos, cfg)))
         self._operacion_activa = True
-        self.startb.configure(state="disabled")
-        self.testb.configure(state="disabled")
-        threading.Thread(
-            target=self._run_cycle,
-            args=(guardar_archivos,),
-            daemon=True,
-        ).start()
+        self.btn_iniciar.configure(state="disabled")
+        self.btn_rapida.configure(state="disabled")
+        self.btn_abortar.configure(state="normal")
+        self.log_msg("Iniciando medida rápida (ciclo diagnóstico puntual)...")
+        threading.Thread(target=self._run_quick, daemon=True).start()
 
-    def _run_cycle(self, guardar_archivos: bool) -> None:
+    def _run_quick(self) -> None:
         try:
-            if guardar_archivos:
-                from apps.stress.sequence import run_degradation_sequence
-
-                run_degradation_sequence(
-                    self.cfg,
-                    guardar_archivos=True,
-                )
-            else:
-                run_comparison_cycle(self.cfg, ciclo=1, guardar_archivos=False)
+            run_cycle(self.cfg, guardar_archivos=False)
+            self.log_msg("[✓] Medida rápida completada.")
         except Exception as exc:
-            self.log_msg(f"ERROR durante el ciclo comparativo: {exc}")
+            self.log_msg(f"[ERROR] Medida rápida: {exc}")
         finally:
-            self.q.put(("cycle_done", ""))
+            self.q.put(("seq_done", None))
+
     def test(self) -> None:
         if not self.modo_automatico or self._operacion_activa:
-            self.log_msg("Activa el modo automático y espera a que termine la operación actual.")
             return
         self.recoger_configuracion()
         self.cfg["evento_aborto"] = threading.Event()
         self.cfg["log_callback"] = self.log_msg
-        self.cfg["grafica_callback"] = lambda datos, cfg: self.q.put(("grafica", (datos, cfg)))
         self._operacion_activa = True
-        self.testb.configure(state="disabled")
-        self.log_msg("Iniciando prueba de relés y estructurasâ€¦")
-        threading.Thread(target=self._test, daemon=True).start()
+        self.btn_test.configure(state="disabled")
+        self.log_msg("Iniciando test de relés y estructuras...")
+        threading.Thread(target=self._run_test, daemon=True).start()
 
-    def _test(self) -> None:
+    def _run_test(self) -> None:
         try:
-            result = probar_reles_y_dispositivos(self.cfg)
-            self.q.put(("log", f"Resultado de la prueba: {result.get('estado', 'desconocido')}"))
-        except MedidaAbortadaPorUsuario as error:
-            self.q.put(("log", f"Prueba abortada: {error}"))
-        except Exception as error:
-            self.q.put(("log", f"ERROR en prueba de relés: {error}"))
+            test_relays_and_devices(self.cfg)
+            self.log_msg("[✓] Test completado con éxito.")
+        except Exception as exc:
+            self.log_msg(f"[ERROR] Test: {exc}")
         finally:
-            self.q.put(("test_done", ""))
-
-    def toggle_manual(self) -> None:
-        if self._operacion_activa:
-            self.log_msg("Espera a que termine la operación actual.")
-            return
-        self.recoger_configuracion()
-        if not self.modo_automatico:
-            self._operacion_activa = True
-            self.log_msg("Recuperando control automático del NGU401â€¦")
-            threading.Thread(target=self._recover_automatic, daemon=True).start()
-            return
-
-        self._operacion_activa = True
-        self.log_msg("Liberando el NGU401 para control manualâ€¦")
-        threading.Thread(target=self._release_manual, daemon=True).start()
-
-    def _release_manual(self) -> None:
-        instrument = None
-        try:
-            instrument = NGU401(self.cfg).connect()
-            instrument.liberar_control_manual()
-            self.q.put(("manual_done", "manual"))
-        except Exception as error:
-            self.q.put(("operation_error", str(error)))
-        finally:
-            if instrument:
-                instrument.close()
-
-    def _recover_automatic(self) -> None:
-        instrument = None
-        try:
-            instrument = NGU401(self.cfg).connect()
-            instrument.recuperar_control_automatico()
-            self.q.put(("manual_done", "automatico"))
-        except Exception as error:
-            self.q.put(("operation_error", str(error)))
-        finally:
-            if instrument:
-                instrument.close()
+            self.q.put(("test_done", None))
 
     def abort(self) -> None:
-        event = self.cfg.get("evento_aborto")
-        if event:
-            event.set()
-        registry.abortar_instrumento_activo()
-        self.log_msg("Solicitud de aborto registrada.")
+        if "evento_aborto" in self.cfg:
+            self.cfg["evento_aborto"].set()
+        self.log_msg("[⏹] Solicitud de aborto enviada...")
+
+    def toggle_manual(self) -> None:
+        try:
+            if self.modo_automatico:
+                liberar_control_manual_ngu401(self.v["visa"].get().strip())
+                self.modo_automatico = False
+                if self._boton_modo:
+                    self._boton_modo.configure(text="↩ Volver a modo automático")
+                self.log_msg("NGU401 liberado para control manual local.")
+            else:
+                recuperar_control_automatico_ngu401(self.v["visa"].get().strip())
+                self.modo_automatico = True
+                if self._boton_modo:
+                    self._boton_modo.configure(text="⚙ Modo manual / automático")
+                self.log_msg("Control automático recuperado.")
+        except Exception as exc:
+            mostrar_error("Error", f"No se pudo cambiar modo:\n{exc}")
 
     def poll(self) -> None:
-        try:
-            if not self.winfo_exists():
-                return
-            while True:
-                message_type, message = self.q.get_nowait()
-                if message_type == "log":
-                    self.log.configure(state="normal")
-                    self.log.insert("end", message + "\n")
-                    self.log.see("end")
-                    self.log.configure(state="disabled")
-                elif message_type == "grafica":
-                    datos, cfg = message
-                    self._mostrar_grafica(datos, cfg)
-                elif message_type == "test_done":
-                    self._operacion_activa = False
-                    self.testb.configure(state="normal")
-                    self.winfo_toplevel().process_pending_resize()
-                elif message_type == "cycle_done":
-                    self._operacion_activa = False
-                    self.startb.configure(state="normal")
-                    self.testb.configure(state="normal")
-                    self.winfo_toplevel().process_pending_resize()
-                elif message_type == "manual_done":
-                    self._operacion_activa = False
-                    self.winfo_toplevel().process_pending_resize()
-                    self.modo_automatico = message == "automatico"
-                    if self._boton_modo:
-                        self._boton_modo.configure(
-                            text=("âš™ Modo manual / automático" if self.modo_automatico else "â†© Volver a modo automático")
-                        )
-                    self.log_msg(
-                        "Control automático recuperado."
-                        if self.modo_automatico
-                        else "NGU401 liberado para control manual."
-                    )
-                elif message_type == "operation_error":
-                    self._operacion_activa = False
-                    self.winfo_toplevel().process_pending_resize()
-                    self.log_msg(f"ERROR cambiando el modo del NGU401: {message}")
-        except queue.Empty:
-            pass
-        if self.winfo_exists():
-            self._poll_job = self.after(100, self.poll)
+        while not self.q.empty():
+            kind, data = self.q.get_nowait()
+            if kind == "log":
+                self.txt_log.insert("end", f"{data}\n")
+                self.txt_log.see("end")
+            elif kind in ("seq_done", "test_done"):
+                self._operacion_activa = False
+                self.btn_iniciar.configure(state="normal")
+                self.btn_rapida.configure(state="normal")
+                self.btn_abortar.configure(state="disabled")
+                self.btn_test.configure(state="normal")
 
-
-
-StressFrame = DegradationModeFrame
-
+        self.after(100, self.poll)
