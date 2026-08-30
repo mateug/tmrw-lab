@@ -13,7 +13,7 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from core.ui_kit.theme import theme_mgr
+from core.ui_kit.theme import theme_mgr, apply_mode_accent
 from core.ui_kit.scaler import scaler, ui, ui_font, ui_font_title_main, ui_font_subtitle, UIConfig
 from core.ui_kit.assets import load_logo
 
@@ -38,15 +38,12 @@ def _enable_high_dpi() -> None:
 
 
 # Colores por índice de tarjeta (hasta 8 modos)
+# Colores por índice de tarjeta (hasta 4 modos, correspondientes a las apps)
 _CARD_STYLES = [
-    {"border": "#0a2240", "hover": "#d5e0eb", "title_fg": "#0a2240", "num_fg": "#0a2240"},
-    {"border": "#2563eb", "hover": "#dbeafe", "title_fg": "#1e40af", "num_fg": "#2563eb"},
-    {"border": "#0284c7", "hover": "#e0f2fe", "title_fg": "#0369a1", "num_fg": "#0284c7"},
-    {"border": "#7c3aed", "hover": "#ede9fe", "title_fg": "#5b21b6", "num_fg": "#7c3aed"},
-    {"border": "#059669", "hover": "#d1fae5", "title_fg": "#065f46", "num_fg": "#059669"},
-    {"border": "#dc2626", "hover": "#fee2e2", "title_fg": "#991b1b", "num_fg": "#dc2626"},
-    {"border": "#d97706", "hover": "#fef3c7", "title_fg": "#92400e", "num_fg": "#d97706"},
-    {"border": "#0891b2", "hover": "#cffafe", "title_fg": "#155e75", "num_fg": "#0891b2"},
+    {"border": "#0284c7", "hover": "#dbeafe", "title_fg": "#0a2240", "num_fg": "#0284c7"}, # 0: Studio (Azul)
+    {"border": "#059669", "hover": "#d1fae5", "title_fg": "#065f46", "num_fg": "#059669"}, # 1: Lite (Verde)
+    {"border": "#7c3aed", "hover": "#ede9fe", "title_fg": "#4c1d95", "num_fg": "#7c3aed"}, # 2: Analytics (Morado)
+    {"border": "#d97706", "hover": "#fef3c7", "title_fg": "#78350f", "num_fg": "#d97706"}, # 3: Stress (Naranja)
 ]
 
 
@@ -106,6 +103,12 @@ class WelcomeFrame(ttk.Frame):
 
         cb_theme.bind("<<ComboboxSelected>>", _on_theme)
 
+        # Título
+        ttk.Label(
+            main, text="TMRW LAB",
+            font=ui_font_title_main(), style="Window.TLabel", anchor="center"
+        ).pack(fill="x", pady=(0, ui(2)))
+
         # Logo TMRW Lab encima del título
         self._logo_tmrw = load_logo("tmrw_lab.ico", (ui(80), ui(80)))
         if self._logo_tmrw:
@@ -114,11 +117,6 @@ class WelcomeFrame(ttk.Frame):
                 bg=t["bg_window"], borderwidth=0, highlightthickness=0
             ).pack(pady=(ui(10), ui(4)))
 
-        # Título
-        ttk.Label(
-            main, text="TMRW Lab",
-            font=ui_font_title_main(), style="Window.TLabel", anchor="center"
-        ).pack(fill="x", pady=(0, ui(2)))
         ttk.Label(
             main, text="Automatización de medidas de laboratorio",
             font=ui_font_subtitle(), style="Window.TLabel", anchor="center"
@@ -312,6 +310,8 @@ class App(tk.Tk):
 
     def mostrar_bienvenida(self):
         self._modo_actual = None
+        # Restablecemos el tema base por si venimos de un modo con acento
+        theme_mgr.apply_ttk_theme(self._style, self)
         if self._mode_frame:
             self._mode_frame.destroy()
             self._mode_frame = None
@@ -342,6 +342,9 @@ class App(tk.Tk):
             callback_volver=self.mostrar_bienvenida,
         )
         self._mode_frame.pack(fill="both", expand=True)
+        
+        # Aplicamos el color de acento del modo activo
+        apply_mode_accent(self._style, modo_id, self)
 
 
 def launch(app_registry=None):
