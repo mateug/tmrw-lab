@@ -166,20 +166,44 @@ class StressFrame(ttk.Frame):
         self.tabs.pack(fill="x", padx=ui(4), pady=ui(2))
 
         # Tab tiempo
-        t_tab = ttk.Frame(self.tabs, style="Window.TFrame")
+        t_tab = ttk.Frame(self.tabs, style="Params.TFrame")
         self.tabs.add(t_tab, text="Intervalos por tiempo")
-        self.time_rows = ttk.Frame(t_tab, style="Window.TFrame")
+        self.time_rows = ttk.Frame(t_tab, style="Params.TFrame")
         self.time_rows.pack(fill="x", padx=ui(4), pady=ui(2))
         self._render_rule_rows(self.time_rows, self.time_rules, "Límite (min)", "Intervalo (s)")
-        ttk.Button(t_tab, text="+ Añadir tramo", command=lambda: self._add_rule(self.time_rules, self.time_rows, "Límite (min)", "Intervalo (s)")).pack(anchor="w", padx=ui(4), pady=ui(2))
+        ttk.Button(t_tab, text="+ Añadir tramo", command=lambda: self._add_rule(self.time_rules, self.time_rows, "Límite (min)", "Intervalo (s)"), style="Tool.TButton").pack(anchor="w", padx=ui(4), pady=ui(2))
+
+        ttk.Label(
+            t_tab,
+            text=(
+                "• Modo por tiempo: El intervalo se aplica progresivamente hasta alcanzar cada límite temporal (min).\n"
+                "  El último límite determina la duración total del ensayo de degradación."
+            ),
+            font=ui_font("Segoe UI", 4.5),
+            foreground=theme_mgr.get_current_theme().get("fg_muted", "#475569"),
+            style="Params.TLabel",
+            justify="left",
+        ).pack(anchor="w", padx=ui(4), pady=(ui(2), ui(4)))
 
         # Tab pendiente
-        s_tab = ttk.Frame(self.tabs, style="Window.TFrame")
+        s_tab = ttk.Frame(self.tabs, style="Params.TFrame")
         self.tabs.add(s_tab, text="Intervalos por estabilización (dVoc/dt)")
-        self.slope_rows = ttk.Frame(s_tab, style="Window.TFrame")
+        self.slope_rows = ttk.Frame(s_tab, style="Params.TFrame")
         self.slope_rows.pack(fill="x", padx=ui(4), pady=ui(2))
         self._render_rule_rows(self.slope_rows, self.slope_rules, "Umbral Voc (V/min)", "Intervalo (s)")
-        ttk.Button(s_tab, text="+ Añadir umbral", command=lambda: self._add_rule(self.slope_rules, self.slope_rows, "Umbral Voc (V/min)", "Intervalo (s)")).pack(anchor="w", padx=ui(4), pady=ui(2))
+        ttk.Button(s_tab, text="+ Añadir umbral", command=lambda: self._add_rule(self.slope_rules, self.slope_rows, "Umbral Voc (V/min)", "Intervalo (s)"), style="Tool.TButton").pack(anchor="w", padx=ui(4), pady=ui(2))
+
+        ttk.Label(
+            s_tab,
+            text=(
+                "• Modo por pendiente de Voc: El intervalo se ajusta según la velocidad de cambio |dVoc/dt| (V/min).\n"
+                "  Se aplica el intervalo del tramo cuando ambas estructuras se sitúan por debajo del umbral."
+            ),
+            font=ui_font("Segoe UI", 4.5),
+            foreground=theme_mgr.get_current_theme().get("fg_muted", "#475569"),
+            style="Params.TLabel",
+            justify="left",
+        ).pack(anchor="w", padx=ui(4), pady=(ui(2), ui(4)))
 
     def _render_rule_rows(self, parent: ttk.Frame, rules: list, first_lbl: str, sec_lbl: str) -> None:
         for w in parent.winfo_children():
