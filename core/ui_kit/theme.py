@@ -1,12 +1,80 @@
-﻿"""Módulo de gestión de temas y paletas corporativas/cientí­ficas para la interfaz.
+"""Módulo de gestión de temas y paletas corporativas/científicas para la interfaz.
 
 Define la arquitectura cromática rica y diferenciada por sección para:
 1. TMRW Silicon (Corporativo)
 2. Nordic Graphite & Navy
+3. TMRW Lab (Multicolor por modo — azul/verde/morado/naranja)
 """
 
 import tkinter as tk
 from tkinter import ttk
+
+
+# ---------------------------------------------------------------------------
+# Paletas de acento por modo para el tema TMRW Lab
+# ---------------------------------------------------------------------------
+MODE_ACCENT_PALETTES = {
+    "studio": {
+        "dark": "#0a2240",
+        "mid": "#0284c7",
+        "light": "#dbeafe",
+        "bg_tint": "#e4ecf4",
+        "console_accent": "#38bdf8",
+        "tab_fg": "#0a2240",
+        "btn_quick": "#1e3a5f",
+        "btn_quick_hover": "#284d7a",
+        "btn_tool": "#475569",
+        "btn_tool_hover": "#64748b",
+    },
+    "lite": {
+        "dark": "#065f46",
+        "mid": "#059669",
+        "light": "#d1fae5",
+        "bg_tint": "#e2f5ee",
+        "console_accent": "#34d399",
+        "tab_fg": "#065f46",
+        "btn_quick": "#047857",
+        "btn_quick_hover": "#059669",
+        "btn_tool": "#4b7a62",
+        "btn_tool_hover": "#5f9e7e",
+    },
+    "analytics": {
+        "dark": "#4c1d95",
+        "mid": "#7c3aed",
+        "light": "#ede9fe",
+        "bg_tint": "#ede9f8",
+        "console_accent": "#a78bfa",
+        "tab_fg": "#4c1d95",
+        "btn_quick": "#6d28d9",
+        "btn_quick_hover": "#7c3aed",
+        "btn_tool": "#6b5b8a",
+        "btn_tool_hover": "#8b7aa8",
+    },
+    "stress": {
+        "dark": "#78350f",
+        "mid": "#d97706",
+        "light": "#fef3c7",
+        "bg_tint": "#f8ecd5",
+        "console_accent": "#fbbf24",
+        "tab_fg": "#78350f",
+        "btn_quick": "#b45309",
+        "btn_quick_hover": "#d97706",
+        "btn_tool": "#7a5c2e",
+        "btn_tool_hover": "#9a7840",
+    },
+    "_default": {
+        "dark": "#0a2240",
+        "mid": "#0284c7",
+        "light": "#dbeafe",
+        "bg_tint": "#e4ecf4",
+        "console_accent": "#38bdf8",
+        "tab_fg": "#0a2240",
+        "btn_quick": "#1e3a5f",
+        "btn_quick_hover": "#284d7a",
+        "btn_tool": "#475569",
+        "btn_tool_hover": "#64748b",
+    },
+}
 
 
 THEMES = {
@@ -165,7 +233,136 @@ THEMES = {
             "card3": {"bg": "#eaedef", "border": "#d97706", "hover": "#fef3c7", "title_fg": "#92400e"},
         },
     },
+    # ── TMRW Lab: tema multicolor por modo ─────────────────────────────────
+    "tmrw_lab": {
+        "id": "tmrw_lab",
+        "name": "TMRW Lab (Multicolor por modo)",
+        "bg_window": "#cfd8e3",
+        "bg_card_default": "#dce5ef",
+        "border_card": "#8fa3bb",
+        "fg_text": "#0f172a",
+        "fg_muted": "#475569",
+        "bg_input": "#f8fafc",
+        "fg_input": "#0f172a",
+        "border_focus": "#0284c7",
+        "keithley": {
+            "bg": "#dce5ef",
+            "border": "#8fa3bb",
+            "header_fg": "#0a2240",
+            "accent_bar": "#0a2240",
+        },
+        "params": {
+            "bg": "#dce5ef",
+            "border": "#8fa3bb",
+            "header_fg": "#0a2240",
+            "accent_bar": "#0284c7",
+        },
+        "control": {
+            "bg": "#dce5ef",
+            "border": "#8fa3bb",
+            "header_fg": "#0a2240",
+            "accent_bar": "#0284c7",
+        },
+        "buttons": {
+            "primary_bg": "#0a2240",
+            "primary_fg": "#ffffff",
+            "primary_hover": "#12335c",
+            "quick_bg": "#1e3a5f",
+            "quick_fg": "#ffffff",
+            "quick_hover": "#284d7a",
+            "danger_bg": "#991b1b",
+            "danger_fg": "#ffffff",
+            "danger_hover": "#b91c1c",
+            "tool_bg": "#475569",
+            "tool_fg": "#ffffff",
+            "tool_hover": "#64748b",
+        },
+        "results": {
+            "bg": "#dce5ef",
+            "border": "#8fa3bb",
+            "header_fg": "#0a2240",
+            "accent_bar": "#0a2240",
+            "bg_console": "#08182b",
+            "fg_console": "#e2e8f0",
+            "fg_accent": "#38bdf8",
+            "fg_success": "#4ade80",
+            "fg_warn": "#fbbf24",
+            "badge_ready_bg": "#0a2240",
+            "badge_ready_fg": "#38bdf8",
+            "badge_running_bg": "#14532d",
+            "badge_running_fg": "#86efac",
+            "badge_abort_bg": "#7f1d1d",
+            "badge_abort_fg": "#fca5a5",
+        },
+        "tabs": {
+            "active_bg": "#dce5ef",
+            "active_fg": "#0a2240",
+            "inactive_bg": "#c8d4e0",
+            "inactive_fg": "#475569",
+            "accent_line": "#0284c7",
+        },
+        "welcome": {
+            "header_fg": "#0a2240",
+        },
+    },
 }
+
+
+def apply_mode_accent(style: ttk.Style, mode_id: str, root=None) -> None:
+    """Aplica el acento cromático del modo activo sobre el tema TMRW Lab.
+
+    Solo actúa cuando el tema activo es 'tmrw_lab'. En otros temas es no-op.
+    Tiñe los estilos TTK de frames de sección, botones y pestañas con la
+    paleta del modo: azul (studio), verde (lite), morado (analytics), naranja (stress).
+    """
+    if ThemeManager.get_current_theme_id() != "tmrw_lab":
+        return
+
+    pal = MODE_ACCENT_PALETTES.get(mode_id, MODE_ACCENT_PALETTES["_default"])
+    t = THEMES["tmrw_lab"]
+    bg_tint = pal["bg_tint"]
+
+    # ── Frames y LabelFrames de sección con tinte del modo ───────────────
+    for sec in ("Keithley", "Params", "Control"):
+        style.configure(f"{sec}.TFrame", background=bg_tint)
+        style.configure(f"{sec}.TLabelframe", background=bg_tint, bordercolor=t["bg_window"])
+        style.configure(f"{sec}.TLabelframe.Label", background=bg_tint, foreground=pal["dark"])
+        style.configure(f"{sec}.TLabel", background=bg_tint, foreground=t["fg_text"])
+        style.configure(f"{sec}.TCheckbutton", background=bg_tint, foreground=t["fg_text"])
+        style.configure(f"{sec}.TRadiobutton", background=bg_tint, foreground=t["fg_text"])
+
+    # ── Botón Primario ────────────────────────────────────────────────────
+    style.configure("Primary.TButton", background=pal["dark"], foreground="#ffffff",
+                    bordercolor=pal["dark"], relief="flat")
+    style.map("Primary.TButton",
+              background=[("active", pal["mid"]), ("disabled", t["border_card"])],
+              foreground=[("disabled", t["fg_muted"])])
+
+    # ── Botón Quick ───────────────────────────────────────────────────────
+    style.configure("Quick.TButton", background=pal["btn_quick"], foreground="#ffffff",
+                    bordercolor=pal["btn_quick"], relief="flat")
+    style.map("Quick.TButton",
+              background=[("active", pal["btn_quick_hover"]), ("disabled", t["border_card"])],
+              foreground=[("disabled", t["fg_muted"])])
+
+    # ── Botón Tool ────────────────────────────────────────────────────────
+    style.configure("Tool.TButton", background=pal["btn_tool"], foreground="#ffffff",
+                    bordercolor=pal["btn_tool"], relief="flat")
+    style.map("Tool.TButton",
+              background=[("active", pal["btn_tool_hover"]), ("disabled", t["border_card"])],
+              foreground=[("disabled", t["fg_muted"])])
+
+    # ── Pestañas: activa tintada con el color del modo ────────────────────
+    style.map("TNotebook.Tab",
+              background=[("selected", pal["light"]), ("active", pal["light"])],
+              foreground=[("selected", pal["tab_fg"]), ("active", pal["tab_fg"])],
+              expand=[("selected", [1, 2, 1, 0])])
+
+    if root is not None:
+        try:
+            root.configure(background=t["bg_window"])
+        except Exception:
+            pass
 
 
 class ThemeManager:
@@ -394,7 +591,7 @@ class ThemeManager:
         )
         style.map(
             "Primary.TButton",
-            background=[("active", b["primary_hover"]), ("disabled", t["border_card"])],
+                  background=[("active", b["primary_hover"]), ("disabled", t["border_card"])],
             foreground=[("disabled", t["fg_muted"])],
         )
 
@@ -408,7 +605,7 @@ class ThemeManager:
         )
         style.map(
             "Quick.TButton",
-            background=[("active", b["quick_hover"]), ("disabled", t["border_card"])],
+                  background=[("active", b["quick_hover"]), ("disabled", t["border_card"])],
             foreground=[("disabled", t["fg_muted"])],
         )
 
@@ -422,7 +619,7 @@ class ThemeManager:
         )
         style.map(
             "Danger.TButton",
-            background=[("active", b["danger_hover"]), ("disabled", t["border_card"])],
+                  background=[("active", b["danger_hover"]), ("disabled", t["border_card"])],
             foreground=[("disabled", t["fg_muted"])],
         )
 
@@ -436,7 +633,7 @@ class ThemeManager:
         )
         style.map(
             "Tool.TButton",
-            background=[("active", b["tool_hover"]), ("disabled", t["border_card"])],
+                  background=[("active", b["tool_hover"]), ("disabled", t["border_card"])],
             foreground=[("disabled", t["fg_muted"])],
         )
 
@@ -452,8 +649,8 @@ class ThemeManager:
         )
         style.map(
             "TNotebook.Tab",
-            background=[("selected", tab_c["active_bg"]), ("active", tab_c["active_bg"])],
-            foreground=[("selected", tab_c["active_fg"]), ("active", tab_c["active_fg"])],
+                  background=[("selected", tab_c["active_bg"]), ("active", tab_c["active_bg"])],
+                  foreground=[("selected", tab_c["active_fg"]), ("active", tab_c["active_fg"])],
             expand=[("selected", [1, 2, 1, 0])],
         )
 
