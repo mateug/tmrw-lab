@@ -9,7 +9,7 @@ from tkinter import ttk, scrolledtext, filedialog
 from pathlib import Path
 import pandas as pd
 
-from core.ui_kit.scaler import ui, ui_font, ui_font_console, ui_font_label, UIConfig
+from core.ui_kit.scaler import ui, ui_font, ui_font_console, UIConfig
 from core.ui_kit.shared import (
     crear_barra_superior,
     crear_seccion_frame,
@@ -117,53 +117,70 @@ class LiteFrame(ttk.Frame):
         f_receta = crear_seccion_frame(col_izq, "[1] Receta Excel y Parámetros (Submodo E)", "params")
         f_receta.pack(fill="x", pady=(0, ui(4)))
 
-        f_file = ttk.Frame(f_receta, style="Window.TFrame")
+        f_file = ttk.Frame(f_receta, style="Params.TFrame")
         f_file.pack(fill="x", padx=ui(6), pady=ui(2))
-        ttk.Label(f_file, text="Archivo Excel:").pack(side="left", padx=ui(4))
+        ttk.Label(f_file, text="Archivo Excel:", style="Params.TLabel").pack(side="left", padx=ui(4))
         ttk.Entry(f_file, textvariable=self.vars["ruta_excel"], width=28).pack(side="left", padx=ui(4))
-        ttk.Button(f_file, text="Examinar...", command=self._on_examinar_excel).pack(side="left", padx=ui(2))
-        ttk.Button(f_file, text="Cargar y Analizar", command=self._on_cargar_receta).pack(side="left", padx=ui(4))
+        ttk.Button(f_file, text="Buscar...", command=self._on_examinar_excel, style="Tool.TButton").pack(side="left", padx=ui(2))
+        ttk.Button(f_file, text="Cargar y Analizar", command=self._on_cargar_receta, style="Tool.TButton").pack(side="left", padx=ui(4))
 
-        f_sheet = ttk.Frame(f_receta, style="Window.TFrame")
+        f_sheet = ttk.Frame(f_receta, style="Params.TFrame")
         f_sheet.pack(fill="x", padx=ui(6), pady=ui(2))
-        ttk.Label(f_sheet, text="Hoja del Excel:").pack(side="left", padx=ui(4))
+        ttk.Label(f_sheet, text="Hoja del Excel:", style="Params.TLabel").pack(side="left", padx=ui(4))
         self.cb_hoja = ttk.Combobox(f_sheet, textvariable=self.vars["hoja_excel"], width=16)
         self.cb_hoja.pack(side="left", padx=ui(4))
-        ttk.Radiobutton(f_sheet, text="Valores en tanto por uno (0.0 - 1.0)", variable=self.vars["excel_valores_0_1"], value=True).pack(side="left", padx=ui(6))
-        ttk.Radiobutton(f_sheet, text="Valores en porcentaje (0 - 100%)", variable=self.vars["excel_valores_0_1"], value=False).pack(side="left", padx=ui(4))
+        ttk.Radiobutton(f_sheet, text="Valores en tanto por uno (0.0 - 1.0)", variable=self.vars["excel_valores_0_1"], value=True, style="Params.TRadiobutton").pack(side="left", padx=ui(6))
+        ttk.Radiobutton(f_sheet, text="Valores en porcentaje (0 - 100%)", variable=self.vars["excel_valores_0_1"], value=False, style="Params.TRadiobutton").pack(side="left", padx=ui(4))
 
         # Tiempos de estabilización y enfriamiento
-        f_tiempos = ttk.LabelFrame(f_receta, text=" Control de Tiempos y Enfriamiento ", padding=ui(4))
+        f_tiempos = ttk.LabelFrame(f_receta, text=" Control de Tiempos y Enfriamiento ", padding=ui(4), style="Params.TLabelframe")
         f_tiempos.pack(fill="x", padx=ui(6), pady=ui(3))
 
-        f_t_grid = ttk.Frame(f_tiempos, style="Window.TFrame")
+        f_t_grid = ttk.Frame(f_tiempos, style="Params.TFrame")
         f_t_grid.pack(fill="x")
-        ttk.Label(f_t_grid, text="Espera estabilización (s):").grid(row=0, column=0, sticky="w", padx=ui(3))
+        ttk.Label(f_t_grid, text="Espera estabilización (s):", style="Params.TLabel").grid(row=0, column=0, sticky="w", padx=ui(3))
         ttk.Entry(f_t_grid, textvariable=self.vars["espera_estab_s"], width=7).grid(row=0, column=1, sticky="w", padx=ui(3))
-        ttk.Label(f_t_grid, text="Espera luz encendida (s):").grid(row=0, column=2, sticky="w", padx=(ui(8), ui(3)))
+        ttk.Label(f_t_grid, text="Espera luz encendida (s):", style="Params.TLabel").grid(row=0, column=2, sticky="w", padx=(ui(8), ui(3)))
         ttk.Entry(f_t_grid, textvariable=self.vars["espera_luz_on_s"], width=7).grid(row=0, column=3, sticky="w", padx=ui(3))
-        ttk.Label(f_t_grid, text="Espera motor (s):").grid(row=0, column=4, sticky="w", padx=(ui(8), ui(3)))
+        ttk.Label(f_t_grid, text="Espera motor (s):", style="Params.TLabel").grid(row=0, column=4, sticky="w", padx=(ui(8), ui(3)))
         ttk.Entry(f_t_grid, textvariable=self.vars["espera_motor_s"], width=7).grid(row=0, column=5, sticky="w", padx=ui(3))
-        ttk.Label(f_t_grid, text="Enfriamiento entre medidas (s):").grid(row=0, column=6, sticky="w", padx=(ui(8), ui(3)))
+        ttk.Label(f_t_grid, text="Enfriamiento entre medidas (s):", style="Params.TLabel").grid(row=0, column=6, sticky="w", padx=(ui(8), ui(3)))
         ttk.Entry(f_t_grid, textvariable=self.vars["tiempo_enfriado_s"], width=7).grid(row=0, column=7, sticky="w", padx=ui(3))
 
-        f_t_opt = ttk.Frame(f_tiempos, style="Window.TFrame")
-        f_t_opt.pack(fill="x", pady=(ui(2), 0))
-        ttk.Checkbutton(f_t_opt, text="Apagar LEDs al finalizar la secuencia", variable=self.vars["apagar_al_final"]).pack(side="left", padx=ui(4))
+        # Texto explicativo de tiempos de receta
+        f_exp_t = ttk.Frame(f_tiempos, style="Params.TFrame")
+        f_exp_t.pack(fill="x", pady=(ui(3), 0))
+        ttk.Label(
+            f_exp_t,
+            text=(
+                "• Espera estabilización (s): Retardo tras aplicar la combinación LED/potencia antes de medir.\n"
+                "• Espera luz encendida (s): Intervalo previo con iluminación antes del disparo del SMU.\n"
+                "• Espera motor (s): Tiempo de asentamiento tras desplazamiento del motor paso a paso.\n"
+                "• Enfriamiento entre medidas (s): Tiempo con luz apagada entre filas sucesivas de la receta."
+            ),
+            font=ui_font("Segoe UI", 4.5),
+            foreground=t.get("fg_muted", "#475569"),
+            style="Params.TLabel",
+            justify="left",
+        ).pack(anchor="w", padx=ui(2))
 
-        # [2] Guardado de Datos
+        f_t_opt = ttk.Frame(f_tiempos, style="Params.TFrame")
+        f_t_opt.pack(fill="x", pady=(ui(3), 0))
+        ttk.Checkbutton(f_t_opt, text="Apagar LEDs al finalizar la secuencia", variable=self.vars["apagar_al_final"], style="Params.TCheckbutton").pack(side="left", padx=ui(4))
+
+        # [2] Guardado de Datos (ENCIMA de la vista previa)
         f_salida = crear_seccion_frame(col_izq, "[2] Guardado de Datos", "params")
         f_salida.pack(fill="x", pady=ui(2))
 
-        f_dir = ttk.Frame(f_salida, style="Window.TFrame")
+        f_dir = ttk.Frame(f_salida, style="Params.TFrame")
         f_dir.pack(fill="x", padx=ui(6), pady=ui(2))
         crear_campo_directorio(f_dir, self.vars["carpeta_salida"], 0, "Carpeta base:")
 
-        f_nom = ttk.Frame(f_salida, style="Window.TFrame")
+        f_nom = ttk.Frame(f_salida, style="Params.TFrame")
         f_nom.pack(fill="x", padx=ui(6), pady=ui(2))
-        ttk.Label(f_nom, text="Subcarpeta:").pack(side="left", padx=ui(4))
+        ttk.Label(f_nom, text="Subcarpeta:", style="Params.TLabel").pack(side="left", padx=ui(4))
         ttk.Entry(f_nom, textvariable=self.vars["nombre_carpeta_medida"], width=16).pack(side="left", padx=ui(4))
-        ttk.Label(f_nom, text="Prefijo medida:").pack(side="left", padx=(ui(10), ui(4)))
+        ttk.Label(f_nom, text="Prefijo medida:", style="Params.TLabel").pack(side="left", padx=(ui(10), ui(4)))
         ttk.Entry(f_nom, textvariable=self.vars["nombre_medida"], width=20).pack(side="left", padx=ui(4))
 
         # [3] Resumen y Vista Previa Interactiva
@@ -173,12 +190,12 @@ class LiteFrame(ttk.Frame):
         self.lbl_resumen = ttk.Label(
             f_prev,
             text="Ningún archivo Excel cargado. Selecciona una receta para analizar los ejes y pasos.",
-            font=ui_font_label(True),
+            style="Results.TLabel",
         )
         self.lbl_resumen.pack(anchor="w", padx=ui(6), pady=ui(2))
 
         # Treeview de vista previa
-        f_tree = ttk.Frame(f_prev, style="Window.TFrame")
+        f_tree = ttk.Frame(f_prev, style="Results.TFrame")
         f_tree.pack(fill="both", expand=True, padx=ui(6), pady=ui(2))
 
         self.tree = ttk.Treeview(f_tree, show="headings", height=6)
@@ -190,26 +207,25 @@ class LiteFrame(ttk.Frame):
         scroll_y.pack(side="right", fill="y")
         scroll_x.pack(side="bottom", fill="x")
 
-        # Botonera de Control
-        f_ctrl = ttk.Frame(col_izq, style="Window.TFrame")
-        f_ctrl.pack(fill="x", pady=ui(4))
+        # [4] Control de Medida
+        f_ctrl_sec = crear_seccion_frame(col_izq, "[4] Control de Medición", "control")
+        f_ctrl_sec.pack(fill="x", pady=ui(4))
 
-        self.btn_iniciar = tk.Button(
+        f_ctrl = ttk.Frame(f_ctrl_sec, style="Control.TFrame")
+        f_ctrl.pack(fill="x", padx=ui(4), pady=ui(4))
+
+        self.btn_iniciar = ttk.Button(
             f_ctrl, text="▶ INICIAR MEDIDA DE RECETA",
-            bg=t["buttons"]["primary_bg"], fg=t["buttons"]["primary_fg"],
-            activebackground=t["buttons"]["primary_hover"], activeforeground="#ffffff",
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
-            command=self._on_iniciar, padx=ui(12), pady=ui(5), relief="flat", cursor="hand2",
+            style="Primary.TButton",
+            command=self._on_iniciar,
             state="disabled",
         )
         self.btn_iniciar.pack(side="left", padx=ui(4))
 
-        self.btn_abortar = tk.Button(
+        self.btn_abortar = ttk.Button(
             f_ctrl, text="⏹ DETENER / ABORTAR",
-            bg=t["buttons"]["danger_bg"], fg=t["buttons"]["danger_fg"],
-            activebackground=t["buttons"]["danger_hover"], activeforeground="#ffffff",
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
-            command=self._on_abortar, padx=ui(10), pady=ui(5), relief="flat", cursor="hand2",
+            style="Danger.TButton",
+            command=self._on_abortar,
             state="disabled",
         )
         self.btn_abortar.pack(side="left", padx=ui(4))
@@ -242,7 +258,6 @@ class LiteFrame(ttk.Frame):
         )
         if ruta:
             self.vars["ruta_excel"].set(ruta)
-            # Cargar nombres de hojas disponibles
             try:
                 xl = pd.ExcelFile(ruta)
                 self.cb_hoja["values"] = xl.sheet_names
@@ -266,7 +281,6 @@ class LiteFrame(ttk.Frame):
             self._ejes_detectados = ejes
             self._filas_receta = filas
 
-            # Actualizar resumen
             ejes_info = []
             if ejes["Estructura"]:
                 ejes_info.append(f"Estructura ({', '.join(ejes['Estructura'])})")
@@ -278,7 +292,6 @@ class LiteFrame(ttk.Frame):
             resumen_txt = f"✓ Receta válida: {len(filas)} combinaciones detectadas.\nEjes activos: {', '.join(ejes_info) if ejes_info else 'Ninguno reconocido'}"
             self.lbl_resumen.configure(text=resumen_txt)
 
-            # Rellenar Treeview
             self.tree.delete(*self.tree.get_children())
             self.tree["columns"] = list(df.columns)
             for col in df.columns:

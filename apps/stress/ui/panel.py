@@ -207,59 +207,49 @@ class StressFrame(ttk.Frame):
         t = theme_mgr.get_current_theme()
         panel = section(parent, "[5] Control de Medida", "control")
 
-        f_conns = ttk.Frame(panel, style="Window.TFrame")
+        f_conns = ttk.Frame(panel, style="Control.TFrame")
         f_conns.pack(fill="x", padx=ui(6), pady=ui(2))
-        ttk.Label(f_conns, text="Arduino (COM):").pack(side="left")
+        ttk.Label(f_conns, text="Arduino (COM):", style="Control.TLabel").pack(side="left")
         ttk.Entry(f_conns, textvariable=self.v["port"], width=8).pack(side="left", padx=(ui(2), ui(12)))
-        ttk.Label(f_conns, text="NGU401 (VISA):").pack(side="left")
+        ttk.Label(f_conns, text="NGU401 (VISA):", style="Control.TLabel").pack(side="left")
         ttk.Entry(f_conns, textvariable=self.v["visa"], width=22).pack(side="left", padx=ui(2))
 
-        f_btns = ttk.Frame(panel, style="Window.TFrame")
+        f_btns = ttk.Frame(panel, style="Control.TFrame")
         f_btns.pack(fill="x", padx=ui(4), pady=ui(4))
 
-        self.btn_iniciar = tk.Button(
+        self.btn_iniciar = ttk.Button(
             f_btns, text="▶ INICIAR SECUENCIA",
-            bg=t["buttons"]["primary_bg"], fg=t["buttons"]["primary_fg"],
-            activebackground=t["buttons"]["primary_hover"], activeforeground="#ffffff",
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
-            command=self.start_measurement, padx=ui(10), pady=ui(4), relief="flat", cursor="hand2",
+            style="Primary.TButton",
+            command=self.start_measurement,
         )
         self.btn_iniciar.pack(side="left", padx=ui(3))
 
-        self.btn_rapida = tk.Button(
+        self.btn_rapida = ttk.Button(
             f_btns, text="⚡ MEDIDA RÁPIDA",
-            bg=t["buttons"]["quick_bg"], fg=t["buttons"]["quick_fg"],
-            activebackground=t["buttons"]["quick_hover"], activeforeground="#ffffff",
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
-            command=self.quick_measurement, padx=ui(8), pady=ui(4), relief="flat", cursor="hand2",
+            style="Quick.TButton",
+            command=self.quick_measurement,
         )
         self.btn_rapida.pack(side="left", padx=ui(3))
 
-        self.btn_abortar = tk.Button(
+        self.btn_abortar = ttk.Button(
             f_btns, text="⏹ DETENER / ABORTAR",
-            bg=t["buttons"]["danger_bg"], fg=t["buttons"]["danger_fg"],
-            activebackground=t["buttons"]["danger_hover"], activeforeground="#ffffff",
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
-            command=self.abort, padx=ui(8), pady=ui(4), relief="flat", cursor="hand2",
+            style="Danger.TButton",
+            command=self.abort,
             state="disabled",
         )
         self.btn_abortar.pack(side="left", padx=ui(3))
 
-        self._boton_modo = tk.Button(
+        self._boton_modo = ttk.Button(
             f_btns, text="⚙ Modo manual / automático",
-            bg=t["buttons"]["tool_bg"], fg=t["buttons"]["tool_fg"],
-            activebackground=t["buttons"]["tool_hover"], activeforeground="#ffffff",
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL),
-            command=self.toggle_manual, padx=ui(6), pady=ui(4), relief="flat", cursor="hand2",
+            style="Tool.TButton",
+            command=self.toggle_manual,
         )
         self._boton_modo.pack(side="left", padx=ui(3))
 
-        self.btn_test = tk.Button(
+        self.btn_test = ttk.Button(
             f_btns, text="🔌 TESTEAR RELÉS Y ESTRUCTURAS",
-            bg=t["buttons"]["tool_bg"], fg=t["buttons"]["tool_fg"],
-            activebackground=t["buttons"]["tool_hover"], activeforeground="#ffffff",
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL),
-            command=self.test, padx=ui(6), pady=ui(4), relief="flat", cursor="hand2",
+            style="Tool.TButton",
+            command=self.test,
         )
         self.btn_test.pack(side="left", padx=ui(3))
 
