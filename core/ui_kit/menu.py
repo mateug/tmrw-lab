@@ -67,7 +67,7 @@ class WelcomeFrame(ttk.Frame):
         top = ttk.Frame(main, style="Header.TFrame")
         top.pack(fill="x", pady=(0, ui(10)))
 
-        self._logo = load_logo("logo_y_texto.png", (150, 115))
+        self._logo = load_logo("logo_y_texto.png", (117, 90))  # (150, 115)
         if self._logo:
             tk.Label(
                 top, image=self._logo,
@@ -110,7 +110,7 @@ class WelcomeFrame(ttk.Frame):
         ).pack(fill="x", pady=(0, ui(2)))
 
         # Logo TMRW Lab encima del título
-        self._logo_tmrw = load_logo("tmrw_lab.ico", (ui(80), ui(80)))
+        self._logo_tmrw = load_logo("tmrw_lab.ico", (ui(125), ui(125)))
         if self._logo_tmrw:
             tk.Label(
                 main, image=self._logo_tmrw,
@@ -143,7 +143,7 @@ class WelcomeFrame(ttk.Frame):
         icono_archivo = manifest.get("icono_archivo", "")
         icono_img = None
         if icono_archivo:
-            icono_img = load_logo(f"{icono_archivo}.ico", (ui(52), ui(52)))
+            icono_img = load_logo(f"{icono_archivo}.ico", (ui(100), ui(100)))
 
         frame = tk.Frame(
             parent,
