@@ -168,26 +168,52 @@ def run_degradation_sequence(
         elapsed_after_cycle = clock() - started_at
         for device, voc in _voc_by_device(result).items():
             histories[device].append(
-                VocObservation(t_s=elapsed_after_cycle, voc_v=voc)
+                VocObservation(elapsed_s=elapsed_after_cycle, voc_v=voc)
+            )
+
+        if max_duration_s is not None:
+            escribir_log(
+                cfg,
+                f"Tiempo total transcurrido: {elapsed_after_cycle:.1f} s "
+                f"({elapsed_after_cycle / 60.0:.2f} min). "
+                f"Límite temporal máximo actual: {max_duration_s / 60.0:.2f} min."
             )
 
         if max_duration_s is not None and elapsed_after_cycle >= max_duration_s:
             break
 
         decision = _decision(cfg, elapsed_after_cycle, histories)
-        if decision.interval_s is None:
-            break
+        programming_interval = max(
+            float(programming.get("intervalo_minimo_s", 0.0)),
+            decision.interval_s,
+        )
 
         escribir_log(
             cfg,
-            f"Esperando {decision.interval_s:.1f} s ({decision.reason}).",
+            f"Próximo ciclo en {programming_interval:g} s ({decision.reason}).",
         )
-        if not _wait_cancelable(decision.interval_s, event, clock, sleep):
+        if not _wait_cancelable(programming_interval, event, clock, sleep):
             break
 
         cycle_number += 1
 
-    return {"ciclos": cycles, "ultima_decision": decision}
+    elapsed_final_s = clock() - started_at
+    status = "abortada" if event is not None and event.is_set() else "finalizada"
+    escribir_log(
+        cfg,
+        f"Secuencia de degradación {status}: "
+        f"{len(cycles)} ciclo(s), {elapsed_final_s:.1f} s.",
+    )
+    return {
+        "ciclos": cycles,
+        "historial_voc": {
+            device: [observation.__dict__ for observation in observations]
+            for device, observations in histories.items()
+        },
+        "ultima_decision": decision,
+        "duracion_s": elapsed_final_s,
+        "estado": status,
+    }
 
 
 run_cycle = run_comparison_cycle

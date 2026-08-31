@@ -104,17 +104,18 @@ def run_atomic(cfg: dict, dispositivo: str, ciclo: int, smu: NGU401 | None = Non
     t0_exp = local.get("t0_experimento", t0)
     tiempo_transcurrido_s = max(0.0, t0 - t0_exp)
     escribir_log(cfg, "\n============================================================")
-    escribir_log(cfg, f"        INICIO MEDIDA IV â€” {dispositivo}: {nombre}")
+    escribir_log(cfg, f"        INICIO MEDIDA IV — {dispositivo}: {nombre}")
     escribir_log(cfg, "============================================================")
     segmentos = validar_plan_ngu401(local, construir_plan_medida(local))
     propio = smu is None; smu = smu or NGU401(local).connect()
     filas = []
     try:
         smu.initialize(local["i_max_A"], local["rango_corriente_A"])
+        compliance_hw = local.get("compliance_hardware_A", local.get("i_max_A", 20e-6))
         escribir_log(
             cfg,
             f"Protección solicitada: {local['i_proteccion_solicitada_A'] * 1e6:g} uA; "
-            f"compliance hardware: {local['compliance_hardware_A'] * 1e6:g} uA.",
+            f"compliance hardware: {compliance_hw * 1e6:g} uA.",
         )
         for segmento in segmentos:
             lecturas = smu.measure_segment(segmento["tensiones_V"], local.get("evento_aborto"))
@@ -147,7 +148,7 @@ def run_atomic(cfg: dict, dispositivo: str, ciclo: int, smu: NGU401 | None = Non
     ruta_excel = None; figuras = {}
     if guardar_archivos:
         base = carpeta_experimento(cfg) / local["nombre_medida"]; ruta_excel = base.with_suffix(".xlsx")
-        guardar_medida(ruta_excel, datos, resumen); figuras = guardar_curvas(datos, base, f"{dispositivo} â€” {nombre}")
+        guardar_medida(ruta_excel, datos, resumen); figuras = guardar_curvas(datos, base, f"{dispositivo} — {nombre}")
     escribir_log(cfg, "\nMEDIDA FINALIZADA - SMU DETENIDO")
     escribir_log(cfg, f"Puntos medidos        : {len(datos)}")
     escribir_log(cfg, f"Tiempo de iteración   : {time.perf_counter()-t0:.3f} s")

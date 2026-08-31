@@ -38,16 +38,16 @@ def construir_plan_medida(cfg: dict) -> list[dict]:
     return [directa_seg, inversa_seg]
 
 def validar_plan_ngu401(cfg: dict, segmentos: list[dict]) -> list[dict]:
-    """Valida lí­mites eléctricos nominales del NGU401 antes de medir."""
-    i_max = abs(float(cfg.get("compliance_hardware_A", cfg["i_max_A"])))
+    """Valida límites eléctricos nominales del NGU401 antes de medir."""
+    i_max = abs(float(cfg.get("compliance_hardware_A", cfg.get("i_max_A", 20e-6))))
     if not 0 < i_max <= 8.0:
-        raise ValueError("El lí­mite de corriente debe estar entre 0 y 8 A.")
+        raise ValueError("El límite de corriente debe estar entre 0 y 8 A.")
     if i_max < MIN_LIMITE_CORRIENTE_NGU401_A:
-        raise ValueError("La compliance del NGU401 debe ser al menos 20 ÂµA.")
+        raise ValueError("La compliance del NGU401 debe ser al menos 20 µA.")
     for segmento in segmentos:
         vmax = float(np.max(np.abs(segmento["tensiones_V"])))
         if vmax > 20.0 or vmax * i_max > 60.0:
-            raise ValueError("El plan excede los lí­mites de tensión o potencia del NGU401.")
+            raise ValueError("El plan excede los límites de tensión o potencia del NGU401.")
         if vmax > 6.0 and i_max > 3.0:
             raise ValueError("Por encima de 6 V el NGU401 admite como máximo 3 A.")
     return segmentos
