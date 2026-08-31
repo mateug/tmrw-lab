@@ -1,4 +1,4 @@
-﻿"""Polí­ticas de intervalo para secuencias de degradación."""
+"""Polí­ticas de intervalo para secuencias de degradación."""
 from __future__ import annotations
 
 from dataclasses import dataclass

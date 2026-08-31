@@ -1,4 +1,4 @@
-﻿import tkinter as tk
+import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 from core.ui_kit.scaler import ui, ui_font, ui_font_section_header, UIConfig, scaler

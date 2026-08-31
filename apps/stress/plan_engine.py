@@ -1,4 +1,4 @@
-﻿"""Construcción y validación independiente de hardware de barridos I-V."""
+"""Construcción y validación independiente de hardware de barridos I-V."""
 import numpy as np
 
 RANGOS_TENSION_NGU401 = np.array([6.0, 20.0])
