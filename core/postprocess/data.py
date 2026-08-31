@@ -381,16 +381,22 @@ def guardar_medida(ruta: Path, datos: pd.DataFrame, resumen: dict) -> None:
 def guardar_resumen_ciclo(ruta: Path, filas: list[dict]) -> None:
     if not filas:
         return
-    nuevas_filas = pd.DataFrame(normalizar_unidades_filas_resumen(filas))
+    nuevas_filas = pd.DataFrame(filas)
     ruta = Path(ruta)
     if ruta.exists():
         try:
             existente = pd.read_excel(ruta, sheet_name="resumen_comparativo")
-            acumulado = pd.concat([existente, nuevas_filas], ignore_index=True)
+            acumulado_raw = pd.concat([existente, nuevas_filas], ignore_index=True)
         except Exception:
-            acumulado = nuevas_filas
+            acumulado_raw = nuevas_filas
     else:
-        acumulado = nuevas_filas
+        acumulado_raw = nuevas_filas
+
+    # Normalizar una sola vez sobre TODO el historial para mantener una escala
+    # adaptativa común aunque cambie entre ciclos.
+    acumulado = pd.DataFrame(
+        normalizar_unidades_filas_resumen(acumulado_raw.to_dict("records"))
+    )
 
     with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
         acumulado.to_excel(writer, sheet_name="resumen_comparativo", index=False)

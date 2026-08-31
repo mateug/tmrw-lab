@@ -41,7 +41,7 @@ def construir_plan_medida(cfg: dict) -> list[dict]:
     def segmento(nombre: str, inicio: float, final: float, paso: float) -> dict:
         return {"segmento": nombre, "tensiones_V": construir_barrido(inicio, final, paso)}
     v0 = float(directa["v_inicial_mV"]) * 1e-3
-    directa_seg = segmento("directa", float(directa["v_final_mV"]) * 1e-3, v0, float(directa["paso_mV"]) * 1e-3)
+    directa_seg = segmento("directa", v0, float(directa["v_final_mV"]) * 1e-3, float(directa["paso_mV"]) * 1e-3)
     vi = v0 if inversa["v_inicial_mV"] is None else float(inversa["v_inicial_mV"]) * 1e-3
     inversa_seg = segmento("inversa", vi, float(inversa["v_final_V"]), float(inversa["paso_mV"]) * 1e-3)
     if modo == "directa":
@@ -135,12 +135,12 @@ def run_atomic(cfg: dict, dispositivo: str, ciclo: int, smu: NGU401 | None = Non
         "Ciclo": ciclo,
         "Medida": local["modo_medida"],
         "Puntos": len(datos),
-        "Voc (V)": fv["Voc_V"],
-        "Isc (A)": fv["Isc_A"],
-        "Pmax (W)": fv["Pmax_W"],
-        "Vmp (V)": fv["Vmp_V"],
-        "Imp (A)": fv["Imp_A"],
-        "FF": fv["FF"],
+        f"Voc ({fv['Voc_unidad']})": fv["Voc_adapt"],
+        f"Isc ({fv['Isc_unidad']})": fv["Isc_adapt"],
+        f"Pmax ({fv['Pmax_unidad']})": fv["Pmax_adapt"],
+        f"Vmp ({fv['Vmp_unidad']})": fv["Vmp_adapt"],
+        f"Imp ({fv['Imp_unidad']})": fv["Imp_adapt"],
+        "FF (%)": fv["FF"] * 100.0,
     }
     grafica_callback = cfg.get("grafica_callback")
     if callable(grafica_callback) and not datos.empty:
