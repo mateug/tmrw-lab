@@ -5,6 +5,135 @@ import pandas as pd
 from core.utils import preparar_carpeta_medida, sanitizar_nombre_archivo
 
 
+# ---------------------------------------------------------------------------
+# Normalización de unidades adaptativas en resúmenes combinados
+# (portado desde iv-maker/src/postprocess/data.py)
+# ---------------------------------------------------------------------------
+
+_FACTORES_UNIDADES = {
+    "pA": 1e-12,
+    "nA": 1e-9,
+    "uA": 1e-6,
+    "mA": 1e-3,
+    "A": 1.0,
+    "uV": 1e-6,
+    "mV": 1e-3,
+    "V": 1.0,
+    "kV": 1e3,
+    "pW": 1e-12,
+    "nW": 1e-9,
+    "uW": 1e-6,
+    "mW": 1e-3,
+    "W": 1.0,
+    "uA/cm^2": 1e-6,
+    "mA/cm^2": 1e-3,
+    "A/cm^2": 1.0,
+    "uW/cm^2": 1e-6,
+    "mW/cm^2": 1e-3,
+    "W/cm^2": 1.0,
+    "nm^2": 1e-6,
+    "um^2": 1e-0,
+    "mm^2": 1e6,
+    "%": 1.0,
+}
+
+
+def _extraer_unidad(clave, prefijo):
+    """Extrae la unidad entre paréntesis de un nombre de columna con formato 'prefijo (unidad)'."""
+    texto = str(clave)
+    if not texto.startswith(f"{prefijo} (") or not texto.endswith(")"):
+        return None
+    return texto[len(prefijo) + 2:-1]
+
+
+def _valor_numerico_valido(valor):
+    """True si el valor es un número finito."""
+    try:
+        return np.isfinite(float(valor))
+    except (TypeError, ValueError):
+        return False
+
+
+def normalizar_unidades_filas_resumen(filas_resumen):
+    """Unifica unidades de magnitudes adaptativas en un resumen acumulado.
+
+    La primera fila con un valor numérico válido fija la unidad dentro de cada
+    magnitud compatible: corriente, tensión, potencia, porcentajes, densidades
+    y superficie. Las filas se copian para no mutar la lista original.
+    """
+    if not filas_resumen:
+        return []
+
+    grupos = {
+        "corriente": (["Isc", "Imp"], "A"),
+        "limite_corriente": (["Imax"], "uA"),
+        "tension": (["Voc", "Vmp"], "V"),
+        "potencia": (["Pmax"], "W"),
+        "densidad_corriente": (["Jsc"], "mA/cm^2"),
+        "densidad_potencia": (["Irradiancia", "Densidad de potencia"], "mW/cm^2"),
+        "superficie": (["Superficie activa"], "um^2"),
+        "porcentaje": (["FF", "Eff"], "%"),
+    }
+    unidades_referencia = {}
+
+    for nombre_grupo, (prefijos, unidad_por_defecto) in grupos.items():
+        for fila in filas_resumen:
+            encontrada = False
+            for clave, valor in fila.items():
+                if not _valor_numerico_valido(valor):
+                    continue
+                for prefijo in prefijos:
+                    unidad = _extraer_unidad(clave, prefijo)
+                    if unidad in _FACTORES_UNIDADES:
+                        unidades_referencia[nombre_grupo] = unidad
+                        encontrada = True
+                        break
+                if encontrada:
+                    break
+            if encontrada:
+                break
+        unidades_referencia.setdefault(nombre_grupo, unidad_por_defecto)
+
+    filas_normalizadas = []
+    for fila in filas_resumen:
+        nueva_fila = {}
+        valores_magnitud = {}
+        for clave, valor in fila.items():
+            magnitud = None
+            grupo = None
+            for posible_grupo, (prefijos, _) in grupos.items():
+                for prefijo in prefijos:
+                    unidad = _extraer_unidad(clave, prefijo)
+                    if unidad in _FACTORES_UNIDADES:
+                        magnitud = prefijo
+                        grupo = posible_grupo
+                        valores_magnitud[magnitud] = (
+                            valor,
+                            unidad,
+                            unidades_referencia[grupo],
+                        )
+                        break
+                if magnitud is not None:
+                    break
+
+            if magnitud is None:
+                nueva_fila[clave] = valor
+
+        for magnitud, (valor, unidad_origen, unidad_destino) in valores_magnitud.items():
+            valor_convertido = valor
+            if _valor_numerico_valido(valor):
+                valor_convertido = (
+                    float(valor)
+                    * _FACTORES_UNIDADES[unidad_origen]
+                    / _FACTORES_UNIDADES[unidad_destino]
+                )
+            nueva_fila[f"{magnitud} ({unidad_destino})"] = valor_convertido
+
+        filas_normalizadas.append(nueva_fila)
+
+    return filas_normalizadas
+
+
 def construir_rutas_salida(cfg):
     carpeta = Path(cfg.get("carpeta_salida_medida") or preparar_carpeta_medida(cfg))
     nombre = sanitizar_nombre_archivo(cfg["nombre_medida"])
@@ -51,7 +180,7 @@ def guardar_resumen_repetitividad_excel(cfg_base, filas_resumen):
     ruta = ruta_base.with_name(f"{ruta_base.stem}_medidas_repetitivas.xlsx")
     ruta.parent.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame(filas_resumen)
+    df = pd.DataFrame(normalizar_unidades_filas_resumen(filas_resumen))
     eliminar_archivo_previo(ruta)
     with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="resumen_repetitividad", index=False)
@@ -67,7 +196,7 @@ def guardar_resumen_barrido_motor_excel(cfg_base, filas_resumen):
     ruta = ruta_base.with_name(f"{ruta_base.stem}_barrido_motor.xlsx")
     ruta.parent.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame(filas_resumen)
+    df = pd.DataFrame(normalizar_unidades_filas_resumen(filas_resumen))
     eliminar_archivo_previo(ruta)
     with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="resumen_barrido_motor", index=False)
@@ -94,7 +223,7 @@ def guardar_resumen_irradiancia_excel(cfg_base, filas_resumen):
     ruta = ruta_base.with_name(f"{ruta_base.stem}_{sufijo}.xlsx")
     ruta.parent.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame(filas_resumen)
+    df = pd.DataFrame(normalizar_unidades_filas_resumen(filas_resumen))
     eliminar_archivo_previo(ruta)
     with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name=sufijo, index=False)
@@ -252,7 +381,7 @@ def guardar_medida(ruta: Path, datos: pd.DataFrame, resumen: dict) -> None:
 def guardar_resumen_ciclo(ruta: Path, filas: list[dict]) -> None:
     if not filas:
         return
-    nuevas_filas = pd.DataFrame(filas)
+    nuevas_filas = pd.DataFrame(normalizar_unidades_filas_resumen(filas))
     ruta = Path(ruta)
     if ruta.exists():
         try:
