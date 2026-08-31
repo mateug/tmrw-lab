@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import queue
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk
 from typing import Any
@@ -522,6 +523,8 @@ class StressFrame(ttk.Frame):
             self.log_msg("Activa el modo automático y espera a que termine la operación actual.")
             return
         self.recoger_configuracion()
+        # El tiempo del experimento empieza exactamente al pulsar Iniciar.
+        self.cfg["t0_experimento"] = time.perf_counter()
         self.cfg["evento_aborto"] = threading.Event()
         self.cfg["log_callback"] = self.log_msg
         self.cfg["grafica_callback"] = lambda datos, cfg: self.q.put(("grafica", (datos, cfg)))
