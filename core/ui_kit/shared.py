@@ -1,4 +1,4 @@
-﻿import tkinter as tk
+import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 from core.ui_kit.scaler import ui, ui_font, ui_font_section_header, UIConfig, scaler
@@ -103,6 +103,11 @@ class ScrollableFrame(ttk.Frame):
             current = getattr(current, "master", None)
 
         return False
+
+    @property
+    def content(self):
+        """Propiedad de compatibilidad que devuelve el frame de contenido interno."""
+        return self.scroll_content
 
     def destroy(self):
         """Elimina la instancia de la lista de ScrollableFrames."""

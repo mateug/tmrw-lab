@@ -1,4 +1,4 @@
-﻿import os
+import os
 import subprocess
 import sys
 import numpy as np
@@ -193,7 +193,8 @@ def generar_imagen_tk_curvas_iv_pv(df, cfg=None, ancho_px=540, alto_px=250):
     if cfg is None:
         cfg = {}
 
-    i_max_medido = np.nanmax(np.abs(df["corriente_medida_A"].to_numpy(dtype=float)))
+    col_i = "corriente_medida_A" if "corriente_medida_A" in df.columns else "corriente_A"
+    i_max_medido = np.nanmax(np.abs(df[col_i].to_numpy(dtype=float)))
     if not np.isfinite(i_max_medido) or i_max_medido == 0:
         i_max_medido = 1.0
     factor_I, unidad_I = seleccionar_escala_corriente(i_max_medido)
@@ -204,7 +205,7 @@ def generar_imagen_tk_curvas_iv_pv(df, cfg=None, ancho_px=540, alto_px=250):
 
     for segmento, df_seg in df.groupby("segmento", sort=False):
         voltaje = df_seg["voltaje_V"]
-        corriente = df_seg["corriente_medida_A"] * factor_I
+        corriente = df_seg[col_i] * factor_I
 
         eje.plot(voltaje, corriente, marker="o", markersize=2.5, linewidth=1, label=segmento)
 

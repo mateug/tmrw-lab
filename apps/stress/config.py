@@ -1,4 +1,4 @@
-﻿"""Contrato de configuración compartido por toda la aplicación."""
+"""Contrato de configuración compartido por toda la aplicación."""
 from copy import deepcopy
 from core.utils import resolver_carpeta_salida_portatil
 
