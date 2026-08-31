@@ -41,7 +41,7 @@ def construir_plan_medida(cfg: dict) -> list[dict]:
     def segmento(nombre: str, inicio: float, final: float, paso: float) -> dict:
         return {"segmento": nombre, "tensiones_V": construir_barrido(inicio, final, paso)}
     v0 = float(directa["v_inicial_mV"]) * 1e-3
-    directa_seg = segmento("directa", v0, float(directa["v_final_mV"]) * 1e-3, float(directa["paso_mV"]) * 1e-3)
+    directa_seg = segmento("directa", float(directa["v_final_mV"]) * 1e-3, v0, float(directa["paso_mV"]) * 1e-3)
     vi = v0 if inversa["v_inicial_mV"] is None else float(inversa["v_inicial_mV"]) * 1e-3
     inversa_seg = segmento("inversa", vi, float(inversa["v_final_V"]), float(inversa["paso_mV"]) * 1e-3)
     if modo == "directa":
