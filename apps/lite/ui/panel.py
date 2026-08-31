@@ -9,6 +9,8 @@ from tkinter import ttk, scrolledtext, filedialog
 from pathlib import Path
 import pandas as pd
 
+from core.instrument.keithley import liberar_control_manual_keithley
+from core.instrument.registry import abortar_instrumento_activo, abortar_motor_activo
 from core.ui_kit.scaler import ui, ui_font, ui_font_console, UIConfig
 from core.ui_kit.shared import (
     crear_barra_superior,
@@ -18,7 +20,6 @@ from core.ui_kit.shared import (
     mostrar_info,
 )
 from core.ui_kit.theme import theme_mgr
-from core.instrument.registry import abortar_instrumento_activo, abortar_motor_activo
 
 from apps.lite.config import get_default_config
 
@@ -77,6 +78,24 @@ class LiteFrame(ttk.Frame):
     def _inicializar_variables(self):
         c = self.cfg_base
         self.vars = {
+            # Guardado de Datos (al principio)
+            "carpeta_salida": tk.StringVar(value=c.get("carpeta_salida", "")),
+            "nombre_carpeta_medida": tk.StringVar(value=c.get("nombre_carpeta_medida", "")),
+            "nombre_medida": tk.StringVar(value=c.get("nombre_medida", "medida_lite")),
+            # SMU Keithley 2450
+            "recurso_visa": tk.StringVar(value=c.get("recurso_visa", "")),
+            "modo_medida": tk.StringVar(value=c.get("modo_medida", "completa")),
+            "v_ini_dir": tk.StringVar(value=str(c["directa"]["v_inicial_mV"])),
+            "v_fin_dir": tk.StringVar(value=str(c["directa"]["v_final_mV"])),
+            "paso_dir": tk.StringVar(value=str(c["directa"]["paso_mV"])),
+            "v_fin_inv": tk.StringVar(value=str(c["inversa"]["v_final_V"])),
+            "paso_inv": tk.StringVar(value=str(c["inversa"]["paso_mV"])),
+            "i_max_uA": tk.StringVar(value=str(c.get("i_max_uA", 10.0))),
+            "superficie_um2": tk.StringVar(value="" if c.get("superficie_um2") is None else str(c["superficie_um2"])),
+            "irradiancia_mW_cm2": tk.StringVar(value="" if c.get("irradiancia_mW_cm2") is None else str(c["irradiancia_mW_cm2"])),
+            "invertir_eje_y": tk.BooleanVar(value=c.get("invertir_eje_y_graficas", True)),
+            "medir_tension_real": tk.BooleanVar(value=c.get("medir_tension_real", False)),
+            # Receta Excel (Submodo E)
             "ruta_excel": tk.StringVar(value=c.get("ruta_excel_receta", "")),
             "hoja_excel": tk.StringVar(value=c.get("hoja_excel", "")),
             "excel_valores_0_1": tk.BooleanVar(value=c.get("excel_valores_0_1", True)),
@@ -86,20 +105,6 @@ class LiteFrame(ttk.Frame):
             "espera_motor_s": tk.StringVar(value=str(c.get("espera_motor_s", 0.0))),
             "tiempo_enfriado_s": tk.StringVar(value=str(c.get("tiempo_enfriado_s", 0.0))),
             "apagar_al_final": tk.BooleanVar(value=c.get("apagar_al_final", True)),
-            # Guardado
-            "carpeta_salida": tk.StringVar(value=c.get("carpeta_salida", "")),
-            "nombre_carpeta_medida": tk.StringVar(value=c.get("nombre_carpeta_medida", "")),
-            "nombre_medida": tk.StringVar(value=c.get("nombre_medida", "medida_lite")),
-            # SMU Keithley
-            "recurso_visa": tk.StringVar(value=c.get("recurso_visa", "")),
-            "modo_medida": tk.StringVar(value=c.get("modo_medida", "completa")),
-            "v_ini_dir": tk.StringVar(value=str(c["directa"]["v_inicial_mV"])),
-            "v_fin_dir": tk.StringVar(value=str(c["directa"]["v_final_mV"])),
-            "paso_dir": tk.StringVar(value=str(c["directa"]["paso_mV"])),
-            "v_fin_inv": tk.StringVar(value=str(c["inversa"]["v_final_V"])),
-            "paso_inv": tk.StringVar(value=str(c["inversa"]["paso_mV"])),
-            "i_max_uA": tk.StringVar(value=str(c.get("i_max_uA", 10.0))),
-            "invertir_eje_y": tk.BooleanVar(value=c.get("invertir_eje_y_graficas", True)),
         }
 
     def _crear_ui(self):
@@ -109,12 +114,75 @@ class LiteFrame(ttk.Frame):
         body = ttk.Frame(self, style="Window.TFrame")
         body.pack(fill="both", expand=True, padx=ui(6), pady=ui(4))
 
-        # Columna Izquierda: Configuración de Receta y Guardado
+        # Columna Izquierda: Configuración
         col_izq = ttk.Frame(body, style="Window.TFrame")
         col_izq.pack(side="left", fill="both", expand=True, padx=(0, ui(4)))
 
-        # [1] Carga y Configuración de Receta Excel (Submodo E)
-        f_receta = crear_seccion_frame(col_izq, "[1] Receta Excel y Parámetros (Submodo E)", "params")
+        # =========================================================================
+        # [1] Guardado de Datos (AL PRINCIPIO, igual que en Studio)
+        # =========================================================================
+        f_salida = crear_seccion_frame(col_izq, "[1] Guardado de Datos", "params")
+        f_salida.pack(fill="x", pady=(0, ui(4)))
+
+        f_dir = ttk.Frame(f_salida, style="Params.TFrame")
+        f_dir.pack(fill="x", padx=ui(6), pady=ui(2))
+        crear_campo_directorio(f_dir, self.vars["carpeta_salida"], 0, "Carpeta base:")
+
+        f_nom = ttk.Frame(f_salida, style="Params.TFrame")
+        f_nom.pack(fill="x", padx=ui(6), pady=ui(2))
+        ttk.Label(f_nom, text="Subcarpeta:", style="Params.TLabel").pack(side="left", padx=ui(4))
+        ttk.Entry(f_nom, textvariable=self.vars["nombre_carpeta_medida"], width=16).pack(side="left", padx=ui(4))
+        ttk.Label(f_nom, text="Prefijo medida:", style="Params.TLabel").pack(side="left", padx=(ui(10), ui(4)))
+        ttk.Entry(f_nom, textvariable=self.vars["nombre_medida"], width=20).pack(side="left", padx=ui(4))
+
+        # =========================================================================
+        # [2] Keithley 2450 — Barrido I-V (JUSTO DEBAJO DE GUARDADO, igual que Studio)
+        # =========================================================================
+        f_smu = crear_seccion_frame(col_izq, "[2] Keithley 2450 — Barrido I-V", "keithley")
+        f_smu.pack(fill="x", pady=(0, ui(4)))
+
+        f_top_smu = ttk.Frame(f_smu, style="Keithley.TFrame")
+        f_top_smu.pack(fill="x", padx=ui(6), pady=ui(2))
+        ttk.Label(f_top_smu, text="Hardware:", style="Keithley.TLabel").pack(side="left")
+        ttk.Label(f_top_smu, text="Keithley 2450 (SMU)", foreground="#0284c7", style="Keithley.TLabel").pack(side="left", padx=(ui(4), ui(12)))
+
+        ttk.Label(f_top_smu, text="Recurso VISA:", style="Keithley.TLabel").pack(side="left", padx=(ui(6), ui(4)))
+        ttk.Entry(f_top_smu, textvariable=self.vars["recurso_visa"], width=18).pack(side="left")
+
+        f_grid = ttk.Frame(f_smu, style="Keithley.TFrame")
+        f_grid.pack(fill="x", padx=ui(6), pady=ui(4))
+
+        labels_entries = [
+            ("Modo de medida:", "modo_medida", ["completa", "directa", "inversa"]),
+            ("I máx (µA):", "i_max_uA", None),
+            ("Superficie (µm²):", "superficie_um2", None),
+            ("V ini directa (mV):", "v_ini_dir", None),
+            ("V fin directa (mV):", "v_fin_dir", None),
+            ("Paso directa (mV):", "paso_dir", None),
+            ("V fin inversa (V):", "v_fin_inv", None),
+            ("Paso inversa (mV):", "paso_inv", None),
+            ("Irradiancia (mW/cm²):", "irradiancia_mW_cm2", None),
+        ]
+
+        for idx, (lbl, var_name, options) in enumerate(labels_entries):
+            row = idx // 3
+            col = (idx % 3) * 2
+            ttk.Label(f_grid, text=lbl, style="Keithley.TLabel").grid(row=row, column=col, sticky="w", padx=ui(4), pady=ui(2))
+            if options:
+                cb = ttk.Combobox(f_grid, textvariable=self.vars[var_name], values=options, state="readonly", width=11)
+                cb.grid(row=row, column=col + 1, sticky="w", padx=ui(4), pady=ui(2))
+            else:
+                ttk.Entry(f_grid, textvariable=self.vars[var_name], width=12).grid(row=row, column=col + 1, sticky="w", padx=ui(4), pady=ui(2))
+
+        f_opts = ttk.Frame(f_smu, style="Keithley.TFrame")
+        f_opts.pack(fill="x", padx=ui(6), pady=ui(2))
+        ttk.Checkbutton(f_opts, text="Invertir eje Y", variable=self.vars["invertir_eje_y"], style="Keithley.TCheckbutton").pack(side="left", padx=ui(4))
+        ttk.Checkbutton(f_opts, text="Sense 4 hilos (tensión real)", variable=self.vars["medir_tension_real"], style="Keithley.TCheckbutton").pack(side="left", padx=ui(10))
+
+        # =========================================================================
+        # [3] Receta Excel y Parámetros (Submodo E)
+        # =========================================================================
+        f_receta = crear_seccion_frame(col_izq, "[3] Receta Excel y Parámetros (Submodo E)", "params")
         f_receta.pack(fill="x", pady=(0, ui(4)))
 
         f_file = ttk.Frame(f_receta, style="Params.TFrame")
@@ -132,7 +200,6 @@ class LiteFrame(ttk.Frame):
         ttk.Radiobutton(f_sheet, text="Valores en tanto por uno (0.0 - 1.0)", variable=self.vars["excel_valores_0_1"], value=True, style="Params.TRadiobutton").pack(side="left", padx=ui(6))
         ttk.Radiobutton(f_sheet, text="Valores en porcentaje (0 - 100%)", variable=self.vars["excel_valores_0_1"], value=False, style="Params.TRadiobutton").pack(side="left", padx=ui(4))
 
-        # Tiempos de estabilización y enfriamiento
         f_tiempos = ttk.LabelFrame(f_receta, text=" Control de Tiempos y Enfriamiento ", padding=ui(4), style="Params.TLabelframe")
         f_tiempos.pack(fill="x", padx=ui(6), pady=ui(3))
 
@@ -147,7 +214,6 @@ class LiteFrame(ttk.Frame):
         ttk.Label(f_t_grid, text="Enfriamiento entre medidas (s):", style="Params.TLabel").grid(row=0, column=6, sticky="w", padx=(ui(8), ui(3)))
         ttk.Entry(f_t_grid, textvariable=self.vars["tiempo_enfriado_s"], width=7).grid(row=0, column=7, sticky="w", padx=ui(3))
 
-        # Texto explicativo de tiempos de receta
         f_exp_t = ttk.Frame(f_tiempos, style="Params.TFrame")
         f_exp_t.pack(fill="x", pady=(ui(3), 0))
         ttk.Label(
@@ -168,23 +234,10 @@ class LiteFrame(ttk.Frame):
         f_t_opt.pack(fill="x", pady=(ui(3), 0))
         ttk.Checkbutton(f_t_opt, text="Apagar LEDs al finalizar la secuencia", variable=self.vars["apagar_al_final"], style="Params.TCheckbutton").pack(side="left", padx=ui(4))
 
-        # [2] Guardado de Datos (ENCIMA de la vista previa)
-        f_salida = crear_seccion_frame(col_izq, "[2] Guardado de Datos", "params")
-        f_salida.pack(fill="x", pady=ui(2))
-
-        f_dir = ttk.Frame(f_salida, style="Params.TFrame")
-        f_dir.pack(fill="x", padx=ui(6), pady=ui(2))
-        crear_campo_directorio(f_dir, self.vars["carpeta_salida"], 0, "Carpeta base:")
-
-        f_nom = ttk.Frame(f_salida, style="Params.TFrame")
-        f_nom.pack(fill="x", padx=ui(6), pady=ui(2))
-        ttk.Label(f_nom, text="Subcarpeta:", style="Params.TLabel").pack(side="left", padx=ui(4))
-        ttk.Entry(f_nom, textvariable=self.vars["nombre_carpeta_medida"], width=16).pack(side="left", padx=ui(4))
-        ttk.Label(f_nom, text="Prefijo medida:", style="Params.TLabel").pack(side="left", padx=(ui(10), ui(4)))
-        ttk.Entry(f_nom, textvariable=self.vars["nombre_medida"], width=20).pack(side="left", padx=ui(4))
-
-        # [3] Resumen y Vista Previa Interactiva
-        f_prev = crear_seccion_frame(col_izq, "[3] Resumen y Vista Previa de Receta", "results")
+        # =========================================================================
+        # [4] Resumen y Vista Previa Interactiva
+        # =========================================================================
+        f_prev = crear_seccion_frame(col_izq, "[4] Resumen y Vista Previa de Receta", "results")
         f_prev.pack(fill="both", expand=True, pady=ui(2))
 
         self.lbl_resumen = ttk.Label(
@@ -194,7 +247,6 @@ class LiteFrame(ttk.Frame):
         )
         self.lbl_resumen.pack(anchor="w", padx=ui(6), pady=ui(2))
 
-        # Treeview de vista previa
         f_tree = ttk.Frame(f_prev, style="Results.TFrame")
         f_tree.pack(fill="both", expand=True, padx=ui(6), pady=ui(2))
 
@@ -207,8 +259,10 @@ class LiteFrame(ttk.Frame):
         scroll_y.pack(side="right", fill="y")
         scroll_x.pack(side="bottom", fill="x")
 
-        # [4] Control de Medida
-        f_ctrl_sec = crear_seccion_frame(col_izq, "[4] Control de Medición", "control")
+        # =========================================================================
+        # [5] Control de Medición
+        # =========================================================================
+        f_ctrl_sec = crear_seccion_frame(col_izq, "[5] Control de Medición", "control")
         f_ctrl_sec.pack(fill="x", pady=ui(4))
 
         f_ctrl = ttk.Frame(f_ctrl_sec, style="Control.TFrame")
@@ -230,6 +284,13 @@ class LiteFrame(ttk.Frame):
         )
         self.btn_abortar.pack(side="left", padx=ui(4))
 
+        self.btn_manual = ttk.Button(
+            f_ctrl, text="⚙ Liberar Keithley",
+            style="Tool.TButton",
+            command=self._on_modo_manual,
+        )
+        self.btn_manual.pack(side="left", padx=ui(4))
+
         # Columna Derecha: Consola de Progreso
         col_der = ttk.Frame(body, width=ui(420), style="Window.TFrame")
         col_der.pack(side="right", fill="both", expand=False, padx=(ui(4), 0))
@@ -250,6 +311,39 @@ class LiteFrame(ttk.Frame):
         )
         self.txt_log.pack(fill="both", expand=True, pady=ui(4))
         self.txt_log.insert("end", "Carga una receta de Excel para comenzar la ejecución guiada en Lite.\n")
+
+    def _recoger_config(self) -> dict:
+        v = self.vars
+        cfg = get_default_config()
+
+        cfg["carpeta_salida"] = v["carpeta_salida"].get().strip()
+        cfg["nombre_carpeta_medida"] = v["nombre_carpeta_medida"].get().strip()
+        cfg["nombre_medida"] = v["nombre_medida"].get().strip() or "medida_lite"
+
+        cfg["recurso_visa"] = v["recurso_visa"].get().strip()
+        cfg["modo_medida"] = v["modo_medida"].get().strip()
+        cfg["directa"]["v_inicial_mV"] = float(v["v_ini_dir"].get() or 0.0)
+        cfg["directa"]["v_final_mV"] = float(v["v_fin_dir"].get() or 550.0)
+        cfg["directa"]["paso_mV"] = float(v["paso_dir"].get() or 10.0)
+        cfg["inversa"]["v_final_V"] = float(v["v_fin_inv"].get() or -11.0)
+        cfg["inversa"]["paso_mV"] = float(v["paso_inv"].get() or 100.0)
+        cfg["i_max_uA"] = float(v["i_max_uA"].get() or 10.0)
+        cfg["superficie_um2"] = float(v["superficie_um2"].get()) if v["superficie_um2"].get() else None
+        cfg["irradiancia_mW_cm2"] = float(v["irradiancia_mW_cm2"].get()) if v["irradiancia_mW_cm2"].get() else None
+        cfg["invertir_eje_y_graficas"] = v["invertir_eje_y"].get()
+        cfg["medir_tension_real"] = v["medir_tension_real"].get()
+
+        cfg["ruta_excel_receta"] = v["ruta_excel"].get().strip()
+        cfg["hoja_excel"] = v["hoja_excel"].get().strip()
+        cfg["excel_valores_0_1"] = v["excel_valores_0_1"].get()
+        cfg["plantilla_comando_excel"] = v["plantilla_comando"].get().strip()
+        cfg["espera_estabilizacion_s"] = float(v["espera_estab_s"].get() or 1.0)
+        cfg["espera_luz_encendida_s"] = float(v["espera_luz_on_s"].get() or 0.0)
+        cfg["espera_motor_s"] = float(v["espera_motor_s"].get() or 0.0)
+        cfg["tiempo_enfriado_s"] = float(v["tiempo_enfriado_s"].get() or 0.0)
+        cfg["apagar_al_final"] = v["apagar_al_final"].get()
+
+        return cfg
 
     def _on_examinar_excel(self):
         ruta = filedialog.askopenfilename(
@@ -312,6 +406,7 @@ class LiteFrame(ttk.Frame):
         if self.ejecutando or not self._filas_receta:
             return
 
+        cfg = self._recoger_config()
         self.ejecutando = True
         self.evento_aborto.clear()
         self.btn_iniciar.configure(state="disabled")
@@ -341,6 +436,13 @@ class LiteFrame(ttk.Frame):
         abortar_instrumento_activo()
         abortar_motor_activo()
         self.txt_log.insert("end", "\n[⏹] Solicitud de aborto enviada...\n")
+
+    def _on_modo_manual(self):
+        try:
+            liberar_control_manual_keithley(self.vars["recurso_visa"].get().strip())
+            mostrar_info("Modo Manual", "Keithley 2450 liberado para control manual local.")
+        except Exception as exc:
+            mostrar_error("Error", f"No se pudo liberar el Keithley:\n{exc}")
 
     def _procesar_cola_ui(self):
         while not self.cola_ui.empty():
