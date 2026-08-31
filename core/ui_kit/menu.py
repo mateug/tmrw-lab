@@ -13,7 +13,7 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from core.ui_kit.theme import theme_mgr
+from core.ui_kit.theme import theme_mgr, apply_mode_accent
 from core.ui_kit.scaler import scaler, ui, ui_font, ui_font_title_main, ui_font_subtitle, UIConfig
 from core.ui_kit.assets import load_logo
 
@@ -38,15 +38,12 @@ def _enable_high_dpi() -> None:
 
 
 # Colores por índice de tarjeta (hasta 8 modos)
+# Colores por índice de tarjeta (hasta 4 modos, correspondientes a las apps)
 _CARD_STYLES = [
-    {"border": "#0a2240", "hover": "#d5e0eb", "title_fg": "#0a2240", "num_fg": "#0a2240"},
-    {"border": "#2563eb", "hover": "#dbeafe", "title_fg": "#1e40af", "num_fg": "#2563eb"},
-    {"border": "#0284c7", "hover": "#e0f2fe", "title_fg": "#0369a1", "num_fg": "#0284c7"},
-    {"border": "#7c3aed", "hover": "#ede9fe", "title_fg": "#5b21b6", "num_fg": "#7c3aed"},
-    {"border": "#059669", "hover": "#d1fae5", "title_fg": "#065f46", "num_fg": "#059669"},
-    {"border": "#dc2626", "hover": "#fee2e2", "title_fg": "#991b1b", "num_fg": "#dc2626"},
-    {"border": "#d97706", "hover": "#fef3c7", "title_fg": "#92400e", "num_fg": "#d97706"},
-    {"border": "#0891b2", "hover": "#cffafe", "title_fg": "#155e75", "num_fg": "#0891b2"},
+    {"border": "#0284c7", "hover": "#dbeafe", "title_fg": "#0a2240", "num_fg": "#0284c7"}, # 0: Studio (Azul)
+    {"border": "#059669", "hover": "#d1fae5", "title_fg": "#065f46", "num_fg": "#059669"}, # 1: Lite (Verde)
+    {"border": "#7c3aed", "hover": "#ede9fe", "title_fg": "#4c1d95", "num_fg": "#7c3aed"}, # 2: Analytics (Morado)
+    {"border": "#d97706", "hover": "#fef3c7", "title_fg": "#78350f", "num_fg": "#d97706"}, # 3: Stress (Naranja)
 ]
 
 
@@ -70,7 +67,7 @@ class WelcomeFrame(ttk.Frame):
         top = ttk.Frame(main, style="Header.TFrame")
         top.pack(fill="x", pady=(0, ui(10)))
 
-        self._logo = load_logo("logo_y_texto.png", (150, 115))
+        self._logo = load_logo("logo_y_texto.png", (117, 90))  # (150, 115)
         if self._logo:
             tk.Label(
                 top, image=self._logo,
@@ -108,11 +105,20 @@ class WelcomeFrame(ttk.Frame):
 
         # Título
         ttk.Label(
-            main, text="TMRW Lab",
+            main, text="TMRW LAB",
             font=ui_font_title_main(), style="Window.TLabel", anchor="center"
-        ).pack(fill="x", pady=(ui(10), ui(2)))
+        ).pack(fill="x", pady=(0, ui(2)))
+
+        # Logo TMRW Lab encima del título
+        self._logo_tmrw = load_logo("tmrw_lab.ico", (ui(125), ui(125)))
+        if self._logo_tmrw:
+            tk.Label(
+                main, image=self._logo_tmrw,
+                bg=t["bg_window"], borderwidth=0, highlightthickness=0
+            ).pack(pady=(ui(10), ui(4)))
+
         ttk.Label(
-            main, text="Automatización de medidas fotovoltaicas",
+            main, text="Automatización de medidas de laboratorio",
             font=ui_font_subtitle(), style="Window.TLabel", anchor="center"
         ).pack(fill="x", pady=(0, ui(12)))
         ttk.Separator(main, orient="horizontal").pack(fill="x", pady=(0, ui(15)))
@@ -133,6 +139,12 @@ class WelcomeFrame(ttk.Frame):
         t = theme_mgr.get_current_theme()
         bg = t.get("bg_card_default", "#e2e8f0")
 
+        # Cargar icono .ico del modo
+        icono_archivo = manifest.get("icono_archivo", "")
+        icono_img = None
+        if icono_archivo:
+            icono_img = load_logo(f"{icono_archivo}.ico", (ui(100), ui(100)))
+
         frame = tk.Frame(
             parent,
             bg=bg,
@@ -140,6 +152,7 @@ class WelcomeFrame(ttk.Frame):
             bd=0,
             highlightthickness=2,
             highlightbackground=style["border"],
+            cursor="hand2",
         )
         frame.grid(row=0, column=col_idx, padx=ui(8), pady=ui(8), sticky="nsew")
 
@@ -149,7 +162,8 @@ class WelcomeFrame(ttk.Frame):
             text=f"Modo {col_idx + 1}",
             bg=bg,
             fg=style["num_fg"],
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
+            font=ui_font("Segoe UI", 6.5, "bold"),
+            cursor="hand2",
         ).pack(pady=(ui(16), ui(4)))
 
         # Título
@@ -158,10 +172,24 @@ class WelcomeFrame(ttk.Frame):
             text=manifest["nombre"],
             bg=bg,
             fg=style["title_fg"],
-            font=ui_font("Segoe UI", UIConfig.SIZE_CARD_TITLE, "bold"),
-            wraplength=180,
+            font=ui_font("Segoe UI", 9.5, "bold"),
+            wraplength=ui(220),
             justify="center",
-        ).pack(pady=(0, ui(8)))
+            cursor="hand2",
+        ).pack(pady=(0, ui(6)))
+
+        # Icono del modo (entre nombre y descripción)
+        if icono_img:
+            lbl_ico = tk.Label(
+                frame,
+                image=icono_img,
+                bg=bg,
+                borderwidth=0,
+                highlightthickness=0,
+                cursor="hand2",
+            )
+            lbl_ico.image = icono_img  # mantener referencia
+            lbl_ico.pack(pady=(0, ui(8)))
 
         # Descripción
         tk.Label(
@@ -169,10 +197,11 @@ class WelcomeFrame(ttk.Frame):
             text=manifest.get("descripcion", ""),
             bg=bg,
             fg=t.get("fg_muted", "#475569"),
-            font=ui_font("Segoe UI", UIConfig.SIZE_LABEL),
-            wraplength=180,
+            font=ui_font("Segoe UI", 5.8),
+            wraplength=ui(220),
             justify="center",
-        ).pack(padx=ui(12), pady=(0, ui(16)))
+            cursor="hand2",
+        ).pack(padx=ui(14), pady=(0, ui(16)), fill="both", expand=True)
 
         # Hover & click
         modo_id = manifest["id"]
@@ -281,6 +310,8 @@ class App(tk.Tk):
 
     def mostrar_bienvenida(self):
         self._modo_actual = None
+        # Restablecemos el tema base por si venimos de un modo con acento
+        theme_mgr.apply_ttk_theme(self._style, self)
         if self._mode_frame:
             self._mode_frame.destroy()
             self._mode_frame = None
@@ -311,6 +342,9 @@ class App(tk.Tk):
             callback_volver=self.mostrar_bienvenida,
         )
         self._mode_frame.pack(fill="both", expand=True)
+        
+        # Aplicamos el color de acento del modo activo
+        apply_mode_accent(self._style, modo_id, self)
 
 
 def launch(app_registry=None):

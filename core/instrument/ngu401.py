@@ -221,6 +221,16 @@ class NGU401:
         finally:
             self.output_off()
 
+    def go_to_local(self):
+        """Devuelve el control manual al panel frontal del NGU401."""
+        if hasattr(self.inst, "control_ren"):
+            for mode in (2, 6, 0):
+                try:
+                    self.inst.control_ren(mode)
+                    return
+                except Exception:
+                    pass
+
     def stop(self):
         self.output_off()
 
@@ -233,3 +243,44 @@ class NGU401:
                     resource.close()
             except Exception:
                 pass
+
+
+def connect_ngu401(resource_name: str, timeout_ms: int = 5000) -> NGU401:
+    """Crea y conecta una instancia del SMU R&S NGU401."""
+    inst = NGU401(resource_name, timeout_ms)
+    inst.connect()
+    return inst
+
+
+def close_ngu401(inst: NGU401 | None) -> None:
+    """Cierra de forma segura el SMU NGU401."""
+    if inst is not None:
+        inst.close()
+
+
+def liberar_control_manual_ngu401(resource_name: str, timeout_ms: int = 5000) -> None:
+    """Libera el NGU401 permitiendo el control manual en su pantalla."""
+    if not resource_name:
+        return
+    inst = None
+    try:
+        inst = NGU401(resource_name, timeout_ms)
+        inst.connect()
+        inst.go_to_local()
+    finally:
+        if inst:
+            inst.close()
+
+
+def recuperar_control_automatico_ngu401(resource_name: str, timeout_ms: int = 5000) -> None:
+    """Recupera el control automático SCPI sobre el NGU401."""
+    if not resource_name:
+        return
+    inst = None
+    try:
+        inst = NGU401(resource_name, timeout_ms)
+        inst.connect()
+    finally:
+        if inst:
+            inst.close()
+

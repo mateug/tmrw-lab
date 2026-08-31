@@ -17,5 +17,6 @@ MANIFEST = {
         "Submodos de LED manual y multicanal."
     ),
     "icono": "🔬",
+    "icono_archivo": "studio",
     "crear_frame": _crear_frame,
 }

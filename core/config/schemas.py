@@ -147,6 +147,20 @@ BLOQUE_UI = {
 }
 
 # ---------------------------------------------------------------------------
+# Bloque: estructura / relé de muestra (Studio + Lite)
+# ---------------------------------------------------------------------------
+
+BLOQUE_ESTRUCTURA = {
+    "eje_estructura_activo": False,
+    "estructura": {
+        "puerto_serie": "COM5",
+        "baudrate": 9600,
+        "estructuras": ["A", "B"],
+        "espera_estabilizacion_s": 0.5,
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Bloque: runtime (callbacks, aborto — no se serializa)
 # ---------------------------------------------------------------------------
 

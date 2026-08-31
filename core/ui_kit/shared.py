@@ -113,14 +113,14 @@ class ScrollableFrame(ttk.Frame):
 
 
 def crear_barra_superior(master, titulo_modo, callback_volver):
-    """Crea una barra de navegación superior con botón 'â† Volver al menú principal', tí­tulo y selector de tema."""
+    """Crea una barra de navegación superior con botón '<-- Volver al menú principal', tí­tulo y selector de tema."""
     t = theme_mgr.get_current_theme()
     header_frame = ttk.Frame(master, style="Header.TFrame")
     header_frame.pack(fill="x", padx=ui(12), pady=(ui(8), ui(4)))
 
     btn_volver = ttk.Button(
         header_frame,
-        text="â† Volver al menú principal",
+        text="← Volver al menú principal",
         command=callback_volver,
         style="Tool.TButton",
     )

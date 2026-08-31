@@ -188,3 +188,8 @@ def run_degradation_sequence(
         cycle_number += 1
 
     return {"ciclos": cycles, "ultima_decision": decision}
+
+
+run_cycle = run_comparison_cycle
+run_sequence = run_degradation_sequence
+

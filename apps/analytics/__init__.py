@@ -14,6 +14,7 @@ MANIFEST = {
         "guardadas en Excel.\n"
         "Comparativas e Isc vs tiempo."
     ),
-    "icono": "📊",
+    "icono": "📈",
+    "icono_archivo": "analytics",
     "crear_frame": _crear_frame,
 }

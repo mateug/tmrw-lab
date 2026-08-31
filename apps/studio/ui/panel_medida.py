@@ -1,104 +1,161 @@
-"""Panel de configuración de medida y SMU Keithley 2450 para Studio."""
-import tkinter as tk
-from tkinter import ttk, scrolledtext
+"""Panel fijo de configuración de medida, guardado y SMU Keithley 2450 para Studio.
 
-from core.ui_kit.scaler import ui, ui_font, ui_font_console, ui_font_label, UIConfig
+Sigue la estructura, estilos temáticos y jerarquía visual de iv-maker:
+  [1] Guardado de Datos (encima de Keithley)
+  [2] Keithley 2450 — Barrido I-V
+  [3] Combinatoria de Ejes Activos (con explicación didáctica y ejemplos)
+  [4] Control de Medición (con botonería estilizada: Primary, Quick, Danger, Tool)
+"""
+from __future__ import annotations
+
+import tkinter as tk
+from tkinter import ttk
+
+from core.ui_kit.scaler import ui, ui_font, ui_font_label, UIConfig
 from core.ui_kit.shared import crear_seccion_frame, crear_campo_directorio
 from core.ui_kit.theme import theme_mgr
 
 
-def crear_panel_medida(parent, vars_dict, callback_iniciar, callback_abortar):
-    """Crea el panel principal de parámetros del Keithley 2450 y controles de ejecución."""
-    t = theme_mgr.get_current_theme()
+def crear_panel_medida_fijo(
+    parent,
+    vars_dict,
+    callback_iniciar,
+    callback_rapida,
+    callback_abortar,
+    callback_modo_manual,
+):
+    """Crea la sección fija izquierda de Studio con los estilos y temas de iv-maker."""
     f_main = ttk.Frame(parent, style="Window.TFrame")
 
-    # ---- 1. Parámetros del Keithley 2450 ----
-    f_smu = crear_seccion_frame(f_main, "1. Keithley 2450 — Barrido I-V", "keithley")
-    f_smu.pack(fill="x", padx=ui(6), pady=ui(4))
+    # =========================================================================
+    # [1] Guardado de Datos (ENCIMA de Keithley 2450)
+    # =========================================================================
+    f_salida = crear_seccion_frame(f_main, "[1] Guardado de Datos", "params")
+    f_salida.pack(fill="x", padx=ui(4), pady=(ui(2), ui(4)))
 
-    # Recurso VISA e indicación de hardware
-    f_top_smu = ttk.Frame(f_smu, style="Window.TFrame")
+    f_dir = ttk.Frame(f_salida, style="Params.TFrame")
+    f_dir.pack(fill="x", padx=ui(6), pady=ui(2))
+    crear_campo_directorio(f_dir, vars_dict["carpeta_salida"], 0, "Carpeta base:")
+
+    f_nom = ttk.Frame(f_salida, style="Params.TFrame")
+    f_nom.pack(fill="x", padx=ui(6), pady=ui(2))
+    ttk.Label(f_nom, text="Subcarpeta:", style="Params.TLabel").pack(side="left", padx=ui(4))
+    ttk.Entry(f_nom, textvariable=vars_dict["nombre_carpeta_medida"], width=16).pack(side="left", padx=ui(4))
+    ttk.Label(f_nom, text="Prefijo medida:", style="Params.TLabel").pack(side="left", padx=(ui(10), ui(4)))
+    ttk.Entry(f_nom, textvariable=vars_dict["nombre_medida"], width=20).pack(side="left", padx=ui(4))
+
+    # =========================================================================
+    # [2] Keithley 2450 — Barrido I-V
+    # =========================================================================
+    f_smu = crear_seccion_frame(f_main, "[2] Keithley 2450 — Barrido I-V", "keithley")
+    f_smu.pack(fill="x", padx=ui(4), pady=ui(4))
+
+    # Fila Hardware y Recurso VISA
+    f_top_smu = ttk.Frame(f_smu, style="Keithley.TFrame")
     f_top_smu.pack(fill="x", padx=ui(6), pady=ui(2))
-    ttk.Label(f_top_smu, text="Hardware requerido:", font=ui_font_label("bold"), style="Window.TLabel").pack(side="left")
-    ttk.Label(f_top_smu, text="Keithley 2450 (SMU)", foreground="#0284c7", font=ui_font_label("bold")).pack(side="left", padx=ui(6))
+    ttk.Label(f_top_smu, text="Hardware:", style="Keithley.TLabel").pack(side="left")
+    ttk.Label(f_top_smu, text="Keithley 2450 (SMU)", foreground="#0284c7", style="Keithley.TLabel").pack(side="left", padx=(ui(4), ui(12)))
 
-    ttk.Label(f_top_smu, text="Recurso VISA:", style="Window.TLabel").pack(side="left", padx=(ui(16), ui(4)))
-    ttk.Entry(f_top_smu, textvariable=vars_dict["recurso_visa"], width=20).pack(side="left")
+    ttk.Label(f_top_smu, text="Recurso VISA:", style="Keithley.TLabel").pack(side="left", padx=(ui(6), ui(4)))
+    ttk.Entry(f_top_smu, textvariable=vars_dict["recurso_visa"], width=18).pack(side="left")
 
     # Grid de parámetros I-V
-    f_grid = ttk.Frame(f_smu, style="Window.TFrame")
+    f_grid = ttk.Frame(f_smu, style="Keithley.TFrame")
     f_grid.pack(fill="x", padx=ui(6), pady=ui(4))
 
     labels_entries = [
         ("Modo de medida:", "modo_medida", ["completa", "directa", "inversa"]),
         ("I máx (µA):", "i_max_uA", None),
+        ("Superficie (µm²):", "superficie_um2", None),
         ("V ini directa (mV):", "v_ini_dir", None),
         ("V fin directa (mV):", "v_fin_dir", None),
         ("Paso directa (mV):", "paso_dir", None),
         ("V fin inversa (V):", "v_fin_inv", None),
         ("Paso inversa (mV):", "paso_inv", None),
-        ("Superficie (µm²):", "superficie_um2", None),
         ("Irradiancia (mW/cm²):", "irradiancia_mW_cm2", None),
     ]
 
     for idx, (lbl, var_name, options) in enumerate(labels_entries):
         row = idx // 3
         col = (idx % 3) * 2
-        ttk.Label(f_grid, text=lbl, style="Window.TLabel").grid(row=row, column=col, sticky="w", padx=ui(4), pady=ui(3))
+        ttk.Label(f_grid, text=lbl, style="Keithley.TLabel").grid(row=row, column=col, sticky="w", padx=ui(4), pady=ui(2))
         if options:
-            cb = ttk.Combobox(f_grid, textvariable=vars_dict[var_name], values=options, state="readonly", width=12)
-            cb.grid(row=row, column=col + 1, sticky="w", padx=ui(4), pady=ui(3))
+            cb = ttk.Combobox(f_grid, textvariable=vars_dict[var_name], values=options, state="readonly", width=11)
+            cb.grid(row=row, column=col + 1, sticky="w", padx=ui(4), pady=ui(2))
         else:
-            ttk.Entry(f_grid, textvariable=vars_dict[var_name], width=14).grid(row=row, column=col + 1, sticky="w", padx=ui(4), pady=ui(3))
+            ttk.Entry(f_grid, textvariable=vars_dict[var_name], width=12).grid(row=row, column=col + 1, sticky="w", padx=ui(4), pady=ui(2))
 
-    # Opciones adicionales
-    f_opts = ttk.Frame(f_smu, style="Window.TFrame")
+    # Opciones de medición y delays
+    f_opts = ttk.Frame(f_smu, style="Keithley.TFrame")
     f_opts.pack(fill="x", padx=ui(6), pady=ui(2))
-    ttk.Checkbutton(f_opts, text="Invertir eje Y en gráficas", variable=vars_dict["invertir_eje_y"]).pack(side="left", padx=ui(4))
-    ttk.Checkbutton(f_opts, text="Medir tensión real (4 hilos / Sense)", variable=vars_dict["medir_tension_real"]).pack(side="left", padx=ui(12))
+    ttk.Checkbutton(f_opts, text="Invertir eje Y", variable=vars_dict["invertir_eje_y"], style="Keithley.TCheckbutton").pack(side="left", padx=ui(4))
+    ttk.Checkbutton(f_opts, text="Sense 4 hilos (tensión real)", variable=vars_dict["medir_tension_real"], style="Keithley.TCheckbutton").pack(side="left", padx=ui(10))
 
-    # ---- 2. Carpeta de salida y nombre ----
-    f_salida = crear_seccion_frame(f_main, "2. Guardado de Datos", "params")
-    f_salida.pack(fill="x", padx=ui(6), pady=ui(4))
+    # =========================================================================
+    # [3] Relación entre Ejes Activos (Con explicación didáctica y ejemplo)
+    # =========================================================================
+    f_comb = crear_seccion_frame(f_main, "[3] Combinatoria de Ejes Activos", "params")
+    f_comb.pack(fill="x", padx=ui(4), pady=ui(4))
 
-    f_dir = ttk.Frame(f_salida, style="Window.TFrame")
-    f_dir.pack(fill="x", padx=ui(6), pady=ui(2))
-    crear_campo_directorio(f_dir, vars_dict["carpeta_salida"], 0, "Carpeta base:")
+    f_radios = ttk.Frame(f_comb, style="Params.TFrame")
+    f_radios.pack(fill="x", padx=ui(6), pady=ui(2))
+    ttk.Label(f_radios, text="Relación entre ejes:", style="Params.TLabel").pack(side="left", padx=ui(4))
+    ttk.Radiobutton(f_radios, text="Producto cartesiano (1-N)", variable=vars_dict["relacion_ejes"], value="1-N", style="Params.TRadiobutton").pack(side="left", padx=ui(8))
+    ttk.Radiobutton(f_radios, text="Emparejamiento directo (1-1)", variable=vars_dict["relacion_ejes"], value="1-1", style="Params.TRadiobutton").pack(side="left", padx=ui(8))
 
-    f_nom = ttk.Frame(f_salida, style="Window.TFrame")
-    f_nom.pack(fill="x", padx=ui(6), pady=ui(2))
-    ttk.Label(f_nom, text="Subcarpeta:", style="Window.TLabel").pack(side="left", padx=ui(4))
-    ttk.Entry(f_nom, textvariable=vars_dict["nombre_carpeta_medida"], width=18).pack(side="left", padx=ui(4))
-    ttk.Label(f_nom, text="Prefijo medida:", style="Window.TLabel").pack(side="left", padx=(ui(12), ui(4)))
-    ttk.Entry(f_nom, textvariable=vars_dict["nombre_medida"], width=22).pack(side="left", padx=ui(4))
+    # Explicación con ejemplos
+    f_expl = ttk.Frame(f_comb, style="Params.TFrame")
+    f_expl.pack(fill="x", padx=ui(6), pady=(ui(2), ui(4)))
+    ttk.Label(
+        f_expl,
+        text=(
+            "• Producto cartesiano (1-N): Se miden todas las combinaciones posibles entre los ejes activos.\n"
+            "  Ejemplo: 3 posiciones de motor × 4 longitudes de onda LED = 12 medidas en total.\n"
+            "• Emparejamiento directo (1-1): Se empareja el paso i de un eje con el paso i del otro.\n"
+            "  Ejemplo: Posición 1 con LED 1, Posición 2 con LED 2, etc. (3 medidas en total)."
+        ),
+        font=ui_font("Segoe UI", 4.5),
+        foreground=theme_mgr.get_current_theme().get("fg_muted", "#475569"),
+        style="Params.TLabel",
+        justify="left",
+    ).pack(anchor="w", padx=ui(4))
 
-    # Combinatoria de ejes
-    f_comb = ttk.Frame(f_salida, style="Window.TFrame")
-    f_comb.pack(fill="x", padx=ui(6), pady=ui(4))
-    ttk.Label(f_comb, text="Relación entre ejes activos:", font=ui_font_label("bold"), style="Window.TLabel").pack(side="left", padx=ui(4))
-    ttk.Radiobutton(f_comb, text="Producto cartesiano (1-N)", variable=vars_dict["relacion_ejes"], value="1-N").pack(side="left", padx=ui(6))
-    ttk.Radiobutton(f_comb, text="Emparejamiento directo (1-1)", variable=vars_dict["relacion_ejes"], value="1-1").pack(side="left", padx=ui(6))
+    # =========================================================================
+    # [4] Control de Medición (Botonería estilizada)
+    # =========================================================================
+    f_ctrl_sec = crear_seccion_frame(f_main, "[4] Control de Medición", "control")
+    f_ctrl_sec.pack(fill="x", padx=ui(4), pady=ui(4))
 
-    # ---- 3. Botonera de Control ----
-    f_ctrl = ttk.Frame(f_main, style="Window.TFrame")
-    f_ctrl.pack(fill="x", padx=ui(6), pady=ui(8))
+    f_btns = ttk.Frame(f_ctrl_sec, style="Control.TFrame")
+    f_btns.pack(fill="x", padx=ui(4), pady=ui(4))
 
-    btn_start = tk.Button(
-        f_ctrl, text="▶ Iniciar Secuencia",
-        bg=t["buttons"]["primary_bg"], fg=t["buttons"]["primary_fg"],
-        activebackground=t["buttons"]["primary_hover"], activeforeground="#ffffff",
-        font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
-        command=callback_iniciar, padx=ui(14), pady=ui(6), relief="flat", cursor="hand2",
+    btn_start = ttk.Button(
+        f_btns, text="▶ INICIAR SECUENCIA",
+        style="Primary.TButton",
+        command=callback_iniciar,
     )
-    btn_start.pack(side="left", padx=ui(6))
+    btn_start.pack(side="left", padx=ui(4))
 
-    btn_stop = tk.Button(
-        f_ctrl, text="⏹ Abortar Medida",
-        bg=t["buttons"]["danger_bg"], fg=t["buttons"]["danger_fg"],
-        activebackground=t["buttons"]["danger_hover"], activeforeground="#ffffff",
-        font=ui_font("Segoe UI", UIConfig.SIZE_LABEL, "bold"),
-        command=callback_abortar, padx=ui(14), pady=ui(6), relief="flat", cursor="hand2",
+    btn_quick = ttk.Button(
+        f_btns, text="⚡ Medida Rápida",
+        style="Quick.TButton",
+        command=callback_rapida,
     )
-    btn_stop.pack(side="left", padx=ui(6))
+    btn_quick.pack(side="left", padx=ui(4))
 
-    return f_main, btn_start, btn_stop
+    btn_stop = ttk.Button(
+        f_btns, text="⏹ DETENER / ABORTAR",
+        style="Danger.TButton",
+        command=callback_abortar,
+        state="disabled",
+    )
+    btn_stop.pack(side="left", padx=ui(4))
+
+    btn_manual = ttk.Button(
+        f_btns, text="⚙ Liberar Keithley",
+        style="Tool.TButton",
+        command=callback_modo_manual,
+    )
+    btn_manual.pack(side="left", padx=ui(4))
+
+    return f_main, btn_start, btn_quick, btn_stop, btn_manual
