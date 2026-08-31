@@ -92,6 +92,8 @@ class StressFrame(ttk.Frame):
             "visa": create_variable(cfg.get("smu", {}).get("recurso_visa", "AUTO")),
             "port": create_variable(cfg.get("rele", {}).get("puerto_serie", "COM3")),
             "mode": create_variable(cfg.get("modo_medida", "completa")),
+            "invertir_eje_y": create_variable(cfg.get("invertir_eje_y_graficas", True)),
+            "medir_tension_real": create_variable(cfg.get("medir_tension_real", False)),
         }
         self.dev = {}
         for device in ("A", "B"):
@@ -219,6 +221,13 @@ class StressFrame(ttk.Frame):
         self.field(panel, "Paso inversa (mV):", variables["paso_inv_mV"], 2, 4)
         self.field(panel, "I máxima (µA):", variables["i_max_uA"], 3, 0)
 
+        f_opts = ttk.Frame(panel, style="Params.TLabel")
+        f_opts.grid(row=4, column=0, columnspan=5, sticky="ew", pady=ui(2))
+        f_opts.columnconfigure(0, weight=1)
+        f_opts.columnconfigure(1, weight=1)
+        ttk.Checkbutton(f_opts, text="Invertir eje Y", variable=self.v["invertir_eje_y"], style="Keithley.TCheckbutton").pack(side="left", padx=ui(4))
+        ttk.Checkbutton(f_opts, text="Medir tensión real", variable=self.v["medir_tension_real"], style="Keithley.TCheckbutton").pack(side="left", padx=ui(4))
+
     def _intervals_panel(self, parent: tk.Misc) -> None:
         panel = section(parent, "[4] Selección de intervalos temporales", "params")
         programming = self.cfg.get("programacion", {})
@@ -249,10 +258,7 @@ class StressFrame(ttk.Frame):
             style="Params.TFrame",
         )
         self.tabs.add(time_tab, text="Intervalos por tiempo")
-        self.tabs.add(
-            stabilization_tab,
-            text="Intervalos por estabilización (dVoc/dt)",
-        )
+        self.tabs.add(stabilization_tab, text="Intervalos por estabilización (dVoc/dt)")
         ttk.Label(
             time_tab,
             text=(
@@ -262,18 +268,40 @@ class StressFrame(ttk.Frame):
             ),
             style="Params.TLabel",
             wraplength=ui(UIConfig.WRAPLENGTH_SECTION),
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, ui(UIConfig.PADDING_NOTE_BOTTOM)))
-        ttk.Label(time_tab, text="Intervalo (s)").grid(row=1, column=0, sticky="w")
-        ttk.Label(time_tab, text="Límite máximo (min)").grid(row=1, column=1, sticky="w")
-        self.time_rows = ttk.Frame(time_tab)
-        self.time_rows.grid(row=2, column=0, columnspan=3, sticky="ew")
+        ).grid(
+            row=0, column=0, columnspan=3, sticky="w", pady=(0, ui(UIConfig.PADDING_NOTE_BOTTOM))
+        )
+
+        # Frame común para cabeceras + filas
+        time_table = ttk.Frame(time_tab, style="Params.TFrame")
+        time_table.grid(row=1, column=0, columnspan=3, sticky="ew")
+
+        # Cabeceras
+        ttk.Label(time_table, text="Intervalo (s)", style="Params.TLabel").grid(
+            row=0, column=0, sticky="w",
+        )
+        ttk.Label(time_table, text="Límite máximo (min)", style="Params.TLabel").grid(
+            row=0, column=1, sticky="w",
+        )
+
+        # Frame SOLO para las filas dinámicas
+        self.time_rows = ttk.Frame(time_table, style="Params.TFrame")
+        self.time_rows.grid(row=1, column=0, columnspan=3, sticky="ew")
+
         self._render_rule_rows(self.time_rows, self.time_rules, "Intervalo", "Límite")
+
         ttk.Button(
             time_tab,
             text="+ Añadir tramo",
             command=lambda: self._add_rule(self.time_rules, self.time_rows, "Intervalo", "Límite"),
             style="Tool.TButton",
-        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=ui(UIConfig.PADDING_GRID_HORIZONTAL))
+        ).grid(
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            pady=ui(UIConfig.PADDING_GRID_HORIZONTAL),
+        )
 
         ttk.Label(
             stabilization_tab,
@@ -284,13 +312,18 @@ class StressFrame(ttk.Frame):
             style="Params.TLabel",
             wraplength=ui(UIConfig.WRAPLENGTH_SECTION),
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, ui(UIConfig.PADDING_NOTE_BOTTOM)))
-        ttk.Label(stabilization_tab, text="Umbral |dVoc/dt| (V/min)").grid(
+
+        # Frame común para cabeceras + filas
+        stabilization_table = ttk.Frame(stabilization_tab, style="Params.TFrame")
+        stabilization_table.grid(row=1, column=0, columnspan=3, sticky="ew")
+
+        ttk.Label(stabilization_table, text="Umbral |dVoc/dt| (V/min)").grid(
             row=1, column=0, sticky="w"
         )
-        ttk.Label(stabilization_tab, text="Intervalo (s)").grid(
+        ttk.Label(stabilization_table, text="Intervalo (s)").grid(
             row=1, column=1, sticky="w"
         )
-        self.slope_rows = ttk.Frame(stabilization_tab)
+        self.slope_rows = ttk.Frame(stabilization_table,  style="Params.TLabel")
         self.slope_rows.grid(row=2, column=0, columnspan=3, sticky="ew")
         self._render_rule_rows(
             self.slope_rows,

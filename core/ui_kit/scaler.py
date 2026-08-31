@@ -20,7 +20,7 @@ class UIConfig:
     SIZE_TITLE_MAIN = 14          # Título principal de bienvenida
     SIZE_SUBTITLE = 8.5           # Subtítulo principal de bienvenida
     SIZE_CARD_TITLE = 9.5         # Título en cabecera de tarjetas de modo
-    SIZE_SECTION_HEADER = 7.0     # Títulos de secciones dentro de los cuadros LabelFrame
+    SIZE_SECTION_HEADER = 10     # Títulos de secciones dentro de los cuadros LabelFrame
     SIZE_LABEL = 4.5              # Texto de etiquetas estándar, casillas y botones de radio
     SIZE_ENTRY = 4.5              # Texto editable dentro de las celdas de entrada (Entry, Combobox)
     SIZE_COMBOBOX_LIST = 4.5      # Texto de las opciones desplegables del menú (listbox de Combobox)
