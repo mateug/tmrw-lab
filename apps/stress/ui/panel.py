@@ -14,7 +14,6 @@ from core.instrument import registry
 from core.plot.plotter import generar_imagen_tk_curvas_iv_pv
 from core.ui_kit.scaler import UIConfig, scaler, ui, ui_font_console
 from core.ui_kit.shared import (
-    ScrollableFrame,
     crear_barra_superior,
     crear_campo_directorio,
     crear_seccion_frame as section,
@@ -132,9 +131,8 @@ class StressFrame(ttk.Frame):
             self.callback_volver,
         )
 
-        self.scroll = ScrollableFrame(self)
-        self.scroll.pack(fill="both", expand=True)
-        parent = self.scroll.content
+        parent = ttk.Frame(self)
+        parent.pack(fill="both", expand=True, padx=ui(6), pady=ui(4))
 
         parent.columnconfigure(0, weight=3)
         parent.columnconfigure(1, weight=2)
