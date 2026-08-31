@@ -104,6 +104,11 @@ class ScrollableFrame(ttk.Frame):
 
         return False
 
+    @property
+    def content(self):
+        """Propiedad de compatibilidad que devuelve el frame de contenido interno."""
+        return self.scroll_content
+
     def destroy(self):
         """Elimina la instancia de la lista de ScrollableFrames."""
         if self in ScrollableFrame._instances:
