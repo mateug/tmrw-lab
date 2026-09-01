@@ -10,8 +10,8 @@ MANIFEST = {
     "id": "stress",
     "nombre": "Stress",
     "descripcion": (
-        "Ensayo de degradación comparativa\n"
-        "A/B con R&S NGU401.\n"
+        "Ensayo de degradación comparativa\n\n"
+        "A/B con R&S NGU401.\n\n"
         "Ciclos programados por tiempo o Voc."
     ),
     "icono": "⚡",

@@ -3,7 +3,7 @@
 Implementa con máxima fidelidad los submodos de construcción manual de iv-maker:
   1. Submodo A: Potencia Absoluta (mW/cm²)
   2. Submodo B: Longitudes de Onda Individuales (11 canales Ossila)
-  3. Submodo C: Combinación Multi-Canal Dinámica (matriz de canales y selector 1-1 / 1-N)
+  3. Submodo C: Combinación Multi-Canal Dinámica (matriz con scroll)
   4. Submodo D: Múltiples Recetas Encadenadas
 
 Incluye explicaciones claras para los tiempos de estabilización, encendido previo y enfriamiento térmico.
@@ -35,6 +35,14 @@ class PanelEjeIluminacion(ttk.Frame):
         ("950 nm", "950"),
     ]
 
+    # Mapeo de submodos ordenados según la pestaña (índice 0, 1, 2, 3)
+    MAPEO_SUBMODOS = [
+        "potencia",
+        "longitud_onda",
+        "combinacion",
+        "multiples_combinaciones",
+    ]
+
     def __init__(self, parent, vars_dict, **kwargs):
         super().__init__(parent, **kwargs)
         self.vars = vars_dict
@@ -48,9 +56,9 @@ class PanelEjeIluminacion(ttk.Frame):
         f_sec = crear_seccion_frame(self, "Eje de Iluminación — Simulador Solar / LEDs Ossila", "params")
         f_sec.pack(fill="both", expand=True, padx=ui(4), pady=ui(4))
 
-        # Toggle activar eje general y conexión serie
+        # 1. BARRA SUPERIOR (Puerto, Conexión, Activar)
         f_top = ttk.Frame(f_sec, style="Params.TFrame")
-        f_top.pack(fill="x", padx=ui(6), pady=ui(3))
+        f_top.pack(fill="x", side="top", padx=ui(6), pady=ui(3))
 
         ttk.Checkbutton(
             f_top,
@@ -64,34 +72,9 @@ class PanelEjeIluminacion(ttk.Frame):
         ttk.Label(f_top, text="Baudrate:", style="Params.TLabel").pack(side="left")
         ttk.Entry(f_top, textvariable=self.vars["solar_baudrate"], width=8).pack(side="left", padx=(0, ui(6)))
 
-        # Selector de submodo de iluminación
-        f_sub = ttk.Frame(f_sec, style="Params.TFrame")
-        f_sub.pack(fill="x", padx=ui(6), pady=ui(3))
-        ttk.Label(f_sub, text="Submodo:", style="Params.TLabel").pack(side="left", padx=(0, ui(6)))
-
-        submodos = [
-            ("A) Potencia Absoluta", "potencia"),
-            ("B) Longitudes Individuales", "longitud_onda"),
-            ("C) Combinación Multicanal", "combinacion"),
-            ("D) Múltiples Recetas", "multiples_combinaciones"),
-        ]
-        for txt, val in submodos:
-            ttk.Radiobutton(
-                f_sub, text=txt, variable=self.vars["irradiancia_modo"], value=val, style="Params.TRadiobutton"
-            ).pack(side="left", padx=ui(6))
-
-        # Notebook de Submodos
-        self.nb_submodos = ttk.Notebook(f_sec)
-        self.nb_submodos.pack(fill="both", expand=True, padx=ui(4), pady=ui(4))
-
-        self._build_submodo_a()
-        self._build_submodo_b()
-        self._build_submodo_c()
-        self._build_submodo_d()
-
-        # Tiempos globales de estabilización y enfriamiento con explicaciones
+        # 2. BLOQUE INFERIOR (Tiempos globales) - Empaquetado ANTES del Notebook en side="bottom" para garantizar su presencia
         f_tiempos = ttk.LabelFrame(f_sec, text=" Control Temporal y Enfriamiento Térmico ", padding=ui(6), style="Params.TLabelframe")
-        f_tiempos.pack(fill="x", padx=ui(4), pady=ui(4))
+        f_tiempos.pack(fill="x", side="bottom", padx=ui(4), pady=ui(4))
 
         f_t_grid = ttk.Frame(f_tiempos, style="Params.TFrame")
         f_t_grid.pack(fill="x", pady=ui(2))
@@ -102,7 +85,6 @@ class PanelEjeIluminacion(ttk.Frame):
         ttk.Label(f_t_grid, text="Tiempo enfriamiento/reposo (s):", style="Params.TLabel").grid(row=0, column=4, sticky="w", padx=(ui(12), ui(4)))
         ttk.Entry(f_t_grid, textvariable=self.vars["solar_tiempo_enfriado_s"], width=8).grid(row=0, column=5, sticky="w", padx=ui(4))
 
-        # Texto explicativo detallado de cada parámetro temporal
         f_exp = ttk.Frame(f_tiempos, style="Params.TFrame")
         f_exp.pack(fill="x", pady=(ui(4), ui(2)))
         ttk.Label(
@@ -122,13 +104,36 @@ class PanelEjeIluminacion(ttk.Frame):
         f_t_opt.pack(fill="x", pady=(ui(3), 0))
         ttk.Checkbutton(f_t_opt, text="Apagar LEDs al finalizar la secuencia", variable=self.vars["solar_apagar_al_final"], style="Params.TCheckbutton").pack(side="left", padx=ui(4))
 
+        # 3. NOTEBOOK CENTRAL (Submodos) - Ocupa el espacio central restante
+        self.nb_submodos = ttk.Notebook(f_sec)
+        self.nb_submodos.pack(fill="both", expand=True, padx=ui(4), pady=ui(4))
+
+        self._build_submodo_a()
+        self._build_submodo_b()
+        self._build_submodo_c()
+        self._build_submodo_d()
+
+        self.nb_submodos.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self._sincronizar_pestana_inicial()
+
+    def _on_tab_changed(self, event):
+        idx = self.nb_submodos.index(self.nb_submodos.select())
+        if 0 <= idx < len(self.MAPEO_SUBMODOS):
+            self.vars["irradiancia_modo"].set(self.MAPEO_SUBMODOS[idx])
+
+    def _sincronizar_pestana_inicial(self):
+        modo_actual = self.vars["irradiancia_modo"].get()
+        if modo_actual in self.MAPEO_SUBMODOS:
+            idx = self.MAPEO_SUBMODOS.index(modo_actual)
+            self.nb_submodos.select(idx)
+
     # ── Submodo A: Potencia Absoluta ─────────────────────────────────────────
     def _build_submodo_a(self):
         f = ttk.Frame(self.nb_submodos, style="Params.TFrame")
         self.nb_submodos.add(f, text="A) Potencia Absoluta")
 
         f_grid = ttk.Frame(f, style="Params.TFrame")
-        f_grid.pack(fill="x", padx=ui(6), pady=ui(4))
+        f_grid.pack(fill="x", padx=ui(6), pady=ui(6))
 
         ttk.Label(f_grid, text="P inicial (mW/cm²):", style="Params.TLabel").grid(row=0, column=0, sticky="w", padx=ui(4), pady=ui(2))
         ttk.Entry(f_grid, textvariable=self.vars["solar_p_ini"], width=10).grid(row=0, column=1, sticky="w", padx=ui(4), pady=ui(2))
@@ -137,20 +142,16 @@ class PanelEjeIluminacion(ttk.Frame):
         ttk.Label(f_grid, text="Paso (mW/cm²):", style="Params.TLabel").grid(row=0, column=4, sticky="w", padx=ui(4), pady=ui(2))
         ttk.Entry(f_grid, textvariable=self.vars["solar_p_paso"], width=10).grid(row=0, column=5, sticky="w", padx=ui(4), pady=ui(2))
 
-        ttk.Label(f_grid, text="Lista potencias personalizada (mW/cm²):", style="Params.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", padx=ui(4), pady=ui(3))
-        ttk.Entry(f_grid, textvariable=self.vars["solar_p_custom"], width=35).grid(row=1, column=2, columnspan=4, sticky="w", padx=ui(4), pady=ui(3))
+        ttk.Label(f_grid, text="Lista potencias personalizada (mW/cm²):", style="Params.TLabel").grid(row=1, column=0, columnspan=2, sticky="w", padx=ui(4), pady=ui(4))
+        ttk.Entry(f_grid, textvariable=self.vars["solar_p_custom"], width=35).grid(row=1, column=2, columnspan=4, sticky="w", padx=ui(4), pady=ui(4))
 
     # ── Submodo B: Longitudes de Onda Individuales ───────────────────────────
     def _build_submodo_b(self):
         f = ttk.Frame(self.nb_submodos, style="Params.TFrame")
         self.nb_submodos.add(f, text="B) Longitudes Individuales")
 
-        # Checkboxes de canales Ossila
-        lf_ch = ttk.LabelFrame(f, text=" Canales LED a Barrer ", padding=ui(4), style="Params.TLabelframe")
-        lf_ch.pack(fill="x", padx=ui(4), pady=ui(2))
-
-        f_ch_grid = ttk.Frame(lf_ch, style="Params.TFrame")
-        f_ch_grid.pack(fill="x")
+        f_ch_grid = ttk.Frame(f, style="Params.TFrame")
+        f_ch_grid.pack(fill="x", padx=ui(4), pady=ui(2))
 
         for idx, (display, raw) in enumerate(self.SOLAR_CANALES):
             r = idx // 6
@@ -159,14 +160,13 @@ class PanelEjeIluminacion(ttk.Frame):
                 row=r, column=c, sticky="w", padx=ui(3), pady=ui(1)
             )
 
-        f_btns_ch = ttk.Frame(lf_ch, style="Params.TFrame")
-        f_btns_ch.pack(fill="x", pady=(ui(2), 0))
+        f_btns_ch = ttk.Frame(f, style="Params.TFrame")
+        f_btns_ch.pack(fill="x", padx=ui(4), pady=(ui(2), ui(4)))
         ttk.Button(f_btns_ch, text="Seleccionar todos", command=self._sel_todos_canales, style="Tool.TButton").pack(side="left", padx=ui(3))
         ttk.Button(f_btns_ch, text="Limpiar todos", command=self._desel_todos_canales, style="Tool.TButton").pack(side="left", padx=ui(3))
 
-        # Intensidades del barrido
         f_int = ttk.Frame(f, style="Params.TFrame")
-        f_int.pack(fill="x", padx=ui(4), pady=ui(3))
+        f_int.pack(fill="x", padx=ui(4), pady=ui(2))
         ttk.Label(f_int, text="I inicial (%):", style="Params.TLabel").grid(row=0, column=0, sticky="w", padx=ui(3))
         ttk.Entry(f_int, textvariable=self.vars["solar_i_ini"], width=8).grid(row=0, column=1, sticky="w", padx=ui(3))
         ttk.Label(f_int, text="I final (%):", style="Params.TLabel").grid(row=0, column=2, sticky="w", padx=ui(3))
@@ -191,7 +191,7 @@ class PanelEjeIluminacion(ttk.Frame):
         self.nb_submodos.add(f, text="C) Combinación Multi-Canal")
 
         f_top = ttk.Frame(f, style="Params.TFrame")
-        f_top.pack(fill="x", padx=ui(4), pady=ui(3))
+        f_top.pack(fill="x", padx=ui(4), pady=ui(2))
         ttk.Label(
             f_top,
             text="Define canales e intensidades (separadas por comas, ej: 0, 50, 100):",
@@ -199,11 +199,33 @@ class PanelEjeIluminacion(ttk.Frame):
         ).pack(side="left")
         ttk.Button(f_top, text="+ Añadir Canal", command=self._anadir_fila_comb, style="Tool.TButton").pack(side="right", padx=ui(4))
 
-        self.f_matriz = ttk.Frame(f, style="Params.TFrame")
-        self.f_matriz.pack(fill="both", expand=True, padx=ui(4), pady=ui(2))
+        f_scroll = ttk.Frame(f, style="Params.TFrame")
+        f_scroll.pack(fill="both", expand=True, padx=ui(4), pady=ui(2))
 
-        # Render inicial de filas combinadas
+        t = theme_mgr.get_current_theme()
+        bg_color = t.get("bg_panel", "#ffffff")
+
+        self.canvas_comb = tk.Canvas(f_scroll, bg=bg_color, highlightthickness=0, bd=0, height=120)
+        scrollbar = ttk.Scrollbar(f_scroll, orient="vertical", command=self.canvas_comb.yview)
+
+        self.canvas_comb.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        self.canvas_comb.pack(side="left", fill="both", expand=True)
+
+        self.f_matriz = ttk.Frame(self.canvas_comb, style="Params.TFrame")
+        self.canvas_window = self.canvas_comb.create_window((0, 0), window=self.f_matriz, anchor="nw")
+
+        self.f_matriz.bind("<Configure>", lambda e: self.canvas_comb.configure(scrollregion=self.canvas_comb.bbox("all")))
+        self.canvas_comb.bind("<Configure>", lambda e: self.canvas_comb.itemconfig(self.canvas_window, width=e.width))
+
+        self.canvas_comb.bind("<Enter>", lambda e: self.canvas_comb.bind_all("<MouseWheel>", self._on_mousewheel))
+        self.canvas_comb.bind("<Leave>", lambda e: self.canvas_comb.unbind_all("<MouseWheel>"))
+
         self._render_filas_comb()
+
+    def _on_mousewheel(self, event):
+        if self.canvas_comb.winfo_exists():
+            self.canvas_comb.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _render_filas_comb(self):
         for w in self.f_matriz.winfo_children():
@@ -264,17 +286,17 @@ class PanelEjeIluminacion(ttk.Frame):
             f,
             text="Secuencia de combinaciones predefinidas:",
             style="Params.TLabel",
-        ).pack(anchor="w", padx=ui(6), pady=ui(3))
+        ).pack(anchor="w", padx=ui(6), pady=ui(2))
 
         self.txt_recetas = tk.Text(
-            f, height=5, width=45,
+            f, height=4, width=45,
             font=ui_font("Consolas", 4.5),
             bg=theme_mgr.get_current_theme()["bg_input"],
             fg=theme_mgr.get_current_theme()["fg_input"],
             borderwidth=1,
             relief="solid",
         )
-        self.txt_recetas.pack(fill="both", expand=True, padx=ui(6), pady=ui(3))
+        self.txt_recetas.pack(fill="both", expand=True, padx=ui(6), pady=ui(2))
         self.txt_recetas.insert("end", "# Formato: nombre_receta: canal1=val, canal2=val\nreceta_1: 950=100, 660=50\nreceta_2: 450=100, 515=80\n")
 
 

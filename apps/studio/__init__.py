@@ -12,9 +12,11 @@ MANIFEST = {
     "id": "studio",
     "nombre": "Studio",
     "descripcion": (
-        "Medidas IV con Keithley 2450.\n"
-        "Ejes combinables: estructura, motor, LEDs.\n"
-        "Submodos de LED manual y multicanal."
+        "Medidas IV con Keithley 2450.\n\n"
+        "Ejes combinables:\n"
+        "• Motores\n"
+        "• LEDs\n"
+        "• Estructuras.\n\n"
     ),
     "icono": "🔬",
     "icono_archivo": "studio",

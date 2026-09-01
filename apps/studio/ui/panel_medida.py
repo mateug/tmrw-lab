@@ -106,19 +106,35 @@ def crear_panel_medida_fijo(
     # Explicación con ejemplos
     f_expl = ttk.Frame(f_comb, style="Params.TFrame")
     f_expl.pack(fill="x", padx=ui(6), pady=(ui(2), ui(4)))
+
+    # Configurar pesos de columna para que distribuyan el espacio equitativamente
+    f_expl.columnconfigure(0, weight=1)
+    f_expl.columnconfigure(1, weight=1)
+
     ttk.Label(
         f_expl,
         text=(
             "• Producto cartesiano (1-N): Se miden todas las combinaciones posibles entre los ejes activos.\n"
-            "  Ejemplo: 3 posiciones de motor × 4 longitudes de onda LED = 12 medidas en total.\n"
-            "• Emparejamiento directo (1-1): Se empareja el paso i de un eje con el paso i del otro.\n"
-            "  Ejemplo: Posición 1 con LED 1, Posición 2 con LED 2, etc. (3 medidas en total)."
+            "  Ejemplo: 3 posiciones de motor × 4 longitudes de onda LED = 12 medidas en total."
         ),
         font=ui_font("Segoe UI", 4.5),
         foreground=theme_mgr.get_current_theme().get("fg_muted", "#475569"),
         style="Params.TLabel",
         justify="left",
-    ).pack(anchor="w", padx=ui(4))
+    ).grid(row=0, column=0, sticky="nw", padx=ui(4)) # Añadido row=0 y sticky "nw"
+
+    ttk.Label(
+        f_expl,
+        text=(
+            "• Emparejamiento directo (1-1): Se empareja el paso i de un eje con el paso i del otro.\n"
+            "  Ejemplo: Posición 1 con LED 1, Posición 2 con LED 2, etc. (2 medidas en total)."
+        ),
+        font=ui_font("Segoe UI", 4.5),
+        foreground=theme_mgr.get_current_theme().get("fg_muted", "#475569"),
+        style="Params.TLabel",
+        justify="left",
+    ).grid(row=0, column=1, sticky="nw", padx=ui(4)) # Añadido row=0 y sticky "nw"
+
 
     # =========================================================================
     # [4] Control de Medición (Botonería estilizada)

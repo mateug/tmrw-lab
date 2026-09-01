@@ -10,9 +10,8 @@ MANIFEST = {
     "id": "analytics",
     "nombre": "Analytics",
     "descripcion": (
-        "Visualiza y analiza curvas IV\n"
-        "guardadas en Excel.\n"
-        "Comparativas e Isc vs tiempo."
+        "Visualiza las curvas IV de varios excels.\n\n"
+        "Genera un excel combinado.\n\n"
     ),
     "icono": "📈",
     "icono_archivo": "analytics",
