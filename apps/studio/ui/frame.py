@@ -24,6 +24,7 @@ from apps.studio.ui.panel_medida import crear_panel_medida_fijo
 from apps.studio.ui.panel_motor import PanelEjesMotor
 from apps.studio.ui.panel_led import PanelEjeIluminacion
 from apps.studio.ui.panel_estructura import PanelEjeEstructura
+from core.instrument.solar_simulator import normalizar_canal_ossila
 
 
 class StudioFrame(ttk.Frame):
@@ -137,7 +138,30 @@ class StudioFrame(ttk.Frame):
             "solar_i_fin": tk.StringVar(value=str(iw.get("i_final_pct", 100))),
             "solar_i_paso": tk.StringVar(value=str(iw.get("paso_pct", 10))),
             "solar_i_custom": tk.StringVar(value=""),
-            "solar_canales_comb_lista": [{"canal": "950", "intensidades": "100"}, {"canal": "660", "intensidades": "0, 50, 100"}],
+            # Submodo C: filas canal/intensidades + relaciones 1-1 / 1-N entre canales consecutivos
+            # (mismo formato que usaba la pestaña "Combinación Multi-Canal" del antiguo Modo 3).
+            "solar_canales_comb_lista": [
+                {"canal": "950", "intensidades": "100"},
+                {"canal": "660", "intensidades": "0, 50, 100"},
+            ],
+            "solar_canales_comb_relaciones": ["1-1"],
+            # Submodo D: lista de combinaciones con nombre propio, cada una con sus propias filas
+            # canal/intensidades y relaciones (mismo formato que "Múltiples Combinaciones Multi-Canal").
+            "solar_recetas_lista": [{
+                "nombre": "combo_950_660",
+                "canales": [
+                    {"canal": "950", "intensidades": "100"},
+                    {"canal": "660", "intensidades": "0, 50, 100"},
+                ],
+                "relaciones": ["1-1"],
+            }, {
+                "nombre": "combo_450_515",
+                "canales": [
+                    {"canal": "450", "intensidades": "100"},
+                    {"canal": "515", "intensidades": "80"},
+                ],
+                "relaciones": ["1-1"],
+            }],
             "solar_espera_encendido_s": tk.StringVar(value="0.0"),
             "solar_espera_estab_s": tk.StringVar(value="1.0"),
             "solar_tiempo_enfriado_s": tk.StringVar(value="0.0"),
@@ -242,6 +266,34 @@ class StudioFrame(ttk.Frame):
         self.txt_log.pack(fill="both", expand=True, pady=ui(4))
         self.txt_log.insert("end", "Listo para configurar e iniciar la secuencia en Studio.\n")
 
+    def _parsear_recetas_iluminacion(self) -> list[dict]:
+        """Parsea las combinaciones del submodo D al formato usado por el plan de estudio.
+
+        Cada combinación conserva el mismo formato que usaba la pestaña
+        "Múltiples Combinaciones Multi-Canal" del antiguo Modo 3: nombre,
+        lista de canales con sus intensidades (posiblemente varias separadas
+        por comas) y las relaciones 1-1 / 1-N entre canales consecutivos.
+        """
+        if hasattr(self, "panel_led") and hasattr(self.panel_led, "_sincronizar_recetas_data"):
+            self.panel_led._sincronizar_recetas_data()
+
+        combinaciones = list(self.vars.get("solar_recetas_lista", []))
+        salida = []
+        for idx, combo in enumerate(combinaciones, start=1):
+            nombre = str(combo.get("nombre", "")).strip() or f"combo_{idx}"
+            canales = []
+            for canal_info in combo.get("canales", []):
+                canal_raw = str(canal_info.get("canal", "")).strip()
+                canal = normalizar_canal_ossila(canal_raw)
+                intensidades_raw = str(canal_info.get("intensidades", "0")).strip()
+                if not canal or not intensidades_raw:
+                    continue
+                canales.append({"canal": canal, "intensidades": intensidades_raw})
+            if canales:
+                relaciones = [str(r).strip() or "1-1" for r in combo.get("relaciones", [])]
+                salida.append({"nombre": nombre, "canales": canales, "relaciones": relaciones})
+        return salida
+
     def _recoger_config(self) -> dict:
         v = self.vars
         cfg = get_default_config()
@@ -315,13 +367,17 @@ class StudioFrame(ttk.Frame):
         cfg["irradiancia_potencia"]["p_inicial_mW_cm2"] = float(v["solar_p_ini"].get() or 0.0)
         cfg["irradiancia_potencia"]["p_final_mW_cm2"] = float(v["solar_p_fin"].get() or 100.0)
         cfg["irradiancia_potencia"]["paso_mW_cm2"] = float(v["solar_p_paso"].get() or 10.0)
+        cfg["irradiancia_potencia"]["lista_potencias_custom"] = v["solar_p_custom"].get().strip() or None
         cfg["irradiancia_longitud_onda"]["i_inicial_pct"] = float(v["solar_i_ini"].get() or 0.0)
         cfg["irradiancia_longitud_onda"]["i_final_pct"] = float(v["solar_i_fin"].get() or 100.0)
         cfg["irradiancia_longitud_onda"]["paso_pct"] = float(v["solar_i_paso"].get() or 10.0)
+        cfg["irradiancia_longitud_onda"]["lista_intensidades_custom"] = v["solar_i_custom"].get().strip() or None
         cfg["irradiancia_longitud_onda"]["canales_seleccionados"] = [
             ch for ch, sel in v["solar_canales_seleccionados_dict"].items() if sel.get()
         ]
         cfg["irradiancia_combinacion"]["canales_combinacion"] = v["solar_canales_comb_lista"]
+        cfg["irradiancia_combinacion"]["relaciones"] = list(v.get("solar_canales_comb_relaciones", []))
+        cfg["irradiancia_multiples_combinaciones"]["combinaciones"] = self._parsear_recetas_iluminacion()
 
         # Estructura
         estructura_seleccionadas = [

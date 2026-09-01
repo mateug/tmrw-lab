@@ -16,6 +16,63 @@ from core.instrument.motors.motor_lineal import (
 from core.instrument.solar_simulator import normalizar_canal_ossila
 
 
+def _expandir_combinacion_canales(canales: list, relaciones: list) -> list:
+    """Expande una lista de canales con sus intensidades en las combinaciones finales.
+
+    Respeta la relación 1-1 (emparejamiento por posición) o 1-N (producto
+    cartesiano) definida entre cada par de canales consecutivos, replicando
+    exactamente el comportamiento que tenían las pestañas "Combinación
+    Multi-Canal" y "Múltiples Combinaciones Multi-Canal" del antiguo Modo 3
+    de Irradiancia LED.
+
+    Devuelve una lista de tuplas (nombres_canales, intensidades).
+    """
+    nombres_canales = [normalizar_canal_ossila(ch.get("canal", "")) for ch in canales]
+    listas_intensidades = []
+    for ch in canales:
+        raw = str(ch.get("intensidades", "0")).strip()
+        vals = [float(x.strip()) for x in raw.split(",") if x.strip()] or [0.0]
+        listas_intensidades.append(vals)
+
+    if not listas_intensidades:
+        return []
+
+    # Combinaciones parciales construidas incrementalmente, canal a canal.
+    combos_parciales = [[v] for v in listas_intensidades[0]]
+
+    for idx in range(1, len(listas_intensidades)):
+        actual = listas_intensidades[idx]
+        relacion = relaciones[idx - 1] if idx - 1 < len(relaciones) else "1-1"
+        anterior_len = len(listas_intensidades[idx - 1])
+
+        nuevas = []
+        if relacion == "1-N":
+            for parcial in combos_parciales:
+                for val in actual:
+                    nuevas.append(parcial + [val])
+        else:
+            # 1-1: emparejamiento por posición, salvo que uno de los dos sea un valor fijo.
+            if anterior_len == 1:
+                for parcial in combos_parciales:
+                    for val in actual:
+                        nuevas.append(parcial + [val])
+            elif len(actual) == 1:
+                for parcial in combos_parciales:
+                    nuevas.append(parcial + [actual[0]])
+            elif anterior_len == len(actual):
+                for parcial, val in zip(combos_parciales, actual):
+                    nuevas.append(parcial + [val])
+            else:
+                raise ValueError(
+                    "La relación 1-1 entre dos canales consecutivos requiere el mismo número "
+                    "de intensidades, salvo que uno de ellos tenga una única intensidad fija. "
+                    f"Se han encontrado {anterior_len} y {len(actual)}."
+                )
+        combos_parciales = nuevas
+
+    return [(nombres_canales, intensidades) for intensidades in combos_parciales]
+
+
 RANGOS_TENSION_2450 = np.array([0.02, 0.2, 2.0, 20.0, 200.0])
 RANGOS_CORRIENTE_2450 = np.array([
     10e-9, 100e-9, 1e-6, 10e-6, 100e-6,
@@ -217,53 +274,57 @@ def construir_eje_leds(cfg: dict) -> list[dict]:
         ]
 
     elif modo == "combinacion":
+        # Submodo C: Combinación Multi-Canal (una sola combinación con relaciones 1-1 / 1-N
+        # entre canales consecutivos), tal como en la pestaña homónima del antiguo Modo 3.
         c_cfg = cfg["irradiancia_combinacion"]
         canales = c_cfg.get("canales_combinacion", [])
         if not canales:
             raise ValueError("No se han configurado canales para la combinación LED.")
 
-        # Obtener listas de intensidades por canal
-        listas_intensidades = []
-        nombres_canales = []
-        for ch_info in canales:
-            canal = normalizar_canal_ossila(ch_info.get("canal", ""))
-            raw_ints = str(ch_info.get("intensidades", "0")).strip()
-            vals = [float(x.strip()) for x in raw_ints.split(",") if x.strip()] or [0.0]
-            nombres_canales.append(canal)
-            listas_intensidades.append(vals)
-
-        # Producto cartesiano de los canales configurados
-        combos = list(itertools.product(*listas_intensidades))
+        relaciones = c_cfg.get("relaciones", [])
+        combos = _expandir_combinacion_canales(canales, relaciones)
         return [
             {
                 "solar_modo": "combinacion",
                 "solar_params": {
                     "canales": nombres_canales,
-                    "intensidades": list(c),
+                    "intensidades": list(intensidades),
                     "espera_estabilizacion_s": float(c_cfg.get("espera_estabilizacion_s", 3.0)),
                     "espera_encendido_medida_s": float(c_cfg.get("espera_encendido_medida_s", 3.0)),
                 },
             }
-            for c in combos
+            for nombres_canales, intensidades in combos
         ]
 
     elif modo == "multiples_combinaciones":
+        # Submodo D: Múltiples Combinaciones Multi-Canal. Cada combinación se expande igual
+        # que en el submodo C (con sus propias relaciones 1-1 / 1-N) y todas se concatenan
+        # en el orden en que fueron definidas.
         m_cfg = cfg["irradiancia_multiples_combinaciones"]
-        recetas = m_cfg.get("combinaciones", [])
-        if not recetas:
-            raise ValueError("No se han configurado recetas en múltiples combinaciones.")
-        return [
-            {
-                "solar_modo": "combinacion",
-                "solar_params": {
-                    "canales": [normalizar_canal_ossila(item.get("canal", "")) for item in r.get("canales", [])],
-                    "intensidades": [float(item.get("intensidad", 0)) for item in r.get("canales", [])],
-                    "espera_estabilizacion_s": float(m_cfg.get("espera_estabilizacion_s", 3.0)),
-                    "espera_encendido_medida_s": float(m_cfg.get("espera_encendido_medida_s", 3.0)),
-                },
-            }
-            for r in recetas
-        ]
+        combinaciones = m_cfg.get("combinaciones", [])
+        if not combinaciones:
+            raise ValueError("No se han configurado combinaciones en múltiples combinaciones.")
+
+        pasos = []
+        for combo in combinaciones:
+            canales = combo.get("canales", [])
+            if not canales:
+                continue
+            relaciones = combo.get("relaciones", [])
+            for nombres_canales, intensidades in _expandir_combinacion_canales(canales, relaciones):
+                pasos.append({
+                    "solar_modo": "combinacion",
+                    "solar_params": {
+                        "canales": nombres_canales,
+                        "intensidades": list(intensidades),
+                        "nombre_combinacion": combo.get("nombre", ""),
+                        "espera_estabilizacion_s": float(m_cfg.get("espera_estabilizacion_s", 3.0)),
+                        "espera_encendido_medida_s": float(m_cfg.get("espera_encendido_medida_s", 3.0)),
+                    },
+                })
+        if not pasos:
+            raise ValueError("No se han configurado combinaciones en múltiples combinaciones.")
+        return pasos
 
     return [{"solar_modo": "off", "solar_params": {}}]
 
