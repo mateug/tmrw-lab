@@ -44,56 +44,9 @@ def crear_panel_medida_fijo(
     ttk.Entry(f_nom, textvariable=vars_dict["nombre_medida"], width=20).pack(side="left", padx=ui(4))
 
     # =========================================================================
-    # [2] Keithley 2450 — Barrido I-V
+    # [2] Control de Medición (Botonería estilizada)
     # =========================================================================
-    f_smu = crear_seccion_frame(f_main, "[2] Keithley 2450 — Barrido I-V", "keithley")
-    f_smu.pack(fill="x", padx=ui(4), pady=ui(4))
-
-    # Fila Hardware y Recurso VISA
-    f_top_smu = ttk.Frame(f_smu, style="Keithley.TFrame")
-    f_top_smu.pack(fill="x", padx=ui(6), pady=ui(2))
-    ttk.Label(f_top_smu, text="Hardware:", style="Keithley.TLabel").pack(side="left")
-    ttk.Label(f_top_smu, text="Keithley 2450 (SMU)", foreground="#0284c7", style="Keithley.TLabel").pack(side="left", padx=(ui(4), ui(12)))
-
-    ttk.Label(f_top_smu, text="Recurso VISA:", style="Keithley.TLabel").pack(side="left", padx=(ui(6), ui(4)))
-    ttk.Entry(f_top_smu, textvariable=vars_dict["recurso_visa"], width=18).pack(side="left")
-
-    # Grid de parámetros I-V
-    f_grid = ttk.Frame(f_smu, style="Keithley.TFrame")
-    f_grid.pack(fill="x", padx=ui(6), pady=ui(4))
-
-    labels_entries = [
-        ("Modo de medida:", "modo_medida", ["completa", "directa", "inversa"]),
-        ("I máx (µA):", "i_max_uA", None),
-        ("Superficie (µm²):", "superficie_um2", None),
-        ("V ini directa (mV):", "v_ini_dir", None),
-        ("V fin directa (mV):", "v_fin_dir", None),
-        ("Paso directa (mV):", "paso_dir", None),
-        ("V fin inversa (V):", "v_fin_inv", None),
-        ("Paso inversa (mV):", "paso_inv", None),
-        ("Irradiancia (mW/cm²):", "irradiancia_mW_cm2", None),
-    ]
-
-    for idx, (lbl, var_name, options) in enumerate(labels_entries):
-        row = idx // 3
-        col = (idx % 3) * 2
-        ttk.Label(f_grid, text=lbl, style="Keithley.TLabel").grid(row=row, column=col, sticky="w", padx=ui(4), pady=ui(2))
-        if options:
-            cb = ttk.Combobox(f_grid, textvariable=vars_dict[var_name], values=options, state="readonly", width=11)
-            cb.grid(row=row, column=col + 1, sticky="w", padx=ui(4), pady=ui(2))
-        else:
-            ttk.Entry(f_grid, textvariable=vars_dict[var_name], width=12).grid(row=row, column=col + 1, sticky="w", padx=ui(4), pady=ui(2))
-
-    # Opciones de medición y delays
-    f_opts = ttk.Frame(f_smu, style="Keithley.TFrame")
-    f_opts.pack(fill="x", padx=ui(6), pady=ui(2))
-    ttk.Checkbutton(f_opts, text="Invertir eje Y", variable=vars_dict["invertir_eje_y"], style="Keithley.TCheckbutton").pack(side="left", padx=ui(4))
-    ttk.Checkbutton(f_opts, text="Sense 4 hilos (tensión real)", variable=vars_dict["medir_tension_real"], style="Keithley.TCheckbutton").pack(side="left", padx=ui(10))
-
-    # =========================================================================
-    # [3] Control de Medición (Botonería estilizada)
-    # =========================================================================
-    f_ctrl_sec = crear_seccion_frame(f_main, "[3] Control de Medición", "control")
+    f_ctrl_sec = crear_seccion_frame(f_main, "[2] Control de Medición", "control")
     f_ctrl_sec.pack(fill="x", padx=ui(4), pady=ui(4))
 
     f_btns = ttk.Frame(f_ctrl_sec, style="Control.TFrame")

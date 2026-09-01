@@ -137,6 +137,20 @@ class StudioFrame(ttk.Frame):
             # Estructura
             "estructura_disponibles": estructuras_base,
             "estructura_seleccionadas_dict": {name: tk.BooleanVar(value=name in {"Estructura 1", "Estructura 2"}) for name in estructuras_base},
+            "estructura_nombres_dict": {name: tk.StringVar(value=name) for name in estructuras_base},
+            "estructura_keithley_vars": {
+                name: {
+                    "recurso_visa": tk.StringVar(value=c.get("recurso_visa", "AUTO")),
+                    "modo_medida": tk.StringVar(value=c.get("modo_medida", "completa")),
+                    "i_max_uA": tk.StringVar(value=str(c.get("i_max_uA", 10.0))),
+                    "v_ini_dir": tk.StringVar(value=str(c["directa"]["v_inicial_mV"])),
+                    "v_fin_dir": tk.StringVar(value=str(c["directa"]["v_final_mV"])),
+                    "paso_dir": tk.StringVar(value=str(c["directa"]["paso_mV"])),
+                    "v_fin_inv": tk.StringVar(value=str(c["inversa"]["v_final_V"])),
+                    "paso_inv": tk.StringVar(value=str(c["inversa"]["paso_mV"])),
+                }
+                for name in estructuras_base
+            },
             "estructura_lista": tk.StringVar(value="Estructura 1, Estructura 2"),
             "estructura_espera_s": tk.StringVar(value="0.5"),
         }
@@ -302,22 +316,30 @@ class StudioFrame(ttk.Frame):
         cfg["irradiancia_combinacion"]["canales_combinacion"] = v["solar_canales_comb_lista"]
 
         # Estructura
-        estructura_lista = [e.strip() for e in v["estructura_lista"].get().split(",") if e.strip()]
-        cfg["estructura"]["estructuras"] = estructura_lista
+        estructura_seleccionadas = [
+            nombre for nombre, sel in v["estructura_seleccionadas_dict"].items() if sel.get()
+        ]
+        estructura_nombres = [
+            v["estructura_nombres_dict"].get(nombre, tk.StringVar(value=nombre)).get().strip() or nombre
+            for nombre in estructura_seleccionadas
+        ]
+        cfg["estructura"]["estructuras"] = estructura_nombres
         cfg["estructura"]["espera_estabilizacion_s"] = float(v["estructura_espera_s"].get() or 0.5)
-        cfg["estructura"]["keithley_por_estructura"] = {
-            nombre: {
-                "recurso_visa": v["recurso_visa"].get().strip(),
-                "modo_medida": v["modo_medida"].get().strip(),
-                "i_max_uA": float(v["i_max_uA"].get() or 10.0),
-                "v_inicial_mV": float(v["v_ini_dir"].get() or 0.0),
-                "v_final_mV": float(v["v_fin_dir"].get() or 600.0),
-                "paso_mV": float(v["paso_dir"].get() or 10.0),
-                "v_final_inversa_V": float(v["v_fin_inv"].get() or -0.5),
-                "paso_inversa_mV": float(v["paso_inv"].get() or 10.0),
+        cfg["estructura"]["keithley_por_estructura"] = {}
+        for nombre_base in estructura_seleccionadas:
+            nombre_mostrar = v["estructura_nombres_dict"][nombre_base].get().strip() or nombre_base
+            kvars = v["estructura_keithley_vars"][nombre_base]
+            cfg["estructura"]["keithley_por_estructura"][nombre_mostrar] = {
+                "recurso_visa": kvars["recurso_visa"].get().strip(),
+                "modo_medida": kvars["modo_medida"].get().strip(),
+                "i_max_uA": float(kvars["i_max_uA"].get() or 10.0),
+                "v_inicial_mV": float(kvars["v_ini_dir"].get() or 0.0),
+                "v_final_mV": float(kvars["v_fin_dir"].get() or 600.0),
+                "paso_mV": float(kvars["paso_dir"].get() or 10.0),
+                "v_final_inversa_V": float(kvars["v_fin_inv"].get() or -0.5),
+                "paso_inversa_mV": float(kvars["paso_inv"].get() or 10.0),
             }
-            for nombre in estructura_lista
-        }
+        v["estructura_lista"].set(", ".join(estructura_nombres))
 
         return cfg
 
