@@ -116,44 +116,6 @@ class PanelEjesMotor(ttk.Frame):
         ttk.Checkbutton(f_p3, text="Poner a cero al conectar", variable=self.vars[f"{prefijo}_poner_cero_conectar"], style="Params.TCheckbutton").pack(side="left", padx=(0, ui(14)))
         ttk.Checkbutton(f_p3, text="Volver a cero al finalizar", variable=self.vars[f"{prefijo}_volver_cero_final"], style="Params.TCheckbutton").pack(side="left", padx=ui(14))
 
-        lf_solar = ttk.LabelFrame(parent, text=" Simulador Solar para Medidas Motorizadas ", padding=ui(6), style="Params.TLabelframe")
-        lf_solar.pack(fill="x", padx=ui(4), pady=ui(4))
-
-        f_s1 = ttk.Frame(lf_solar, style="Params.TFrame")
-        f_s1.pack(fill="x", pady=ui(2))
-        ttk.Label(f_s1, text="Puerto COM Ossila:", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_s1, textvariable=self.vars["motor_solar_puerto"], width=8).pack(side="left", padx=(ui(2), ui(14)))
-        ttk.Label(f_s1, text="Baudrate:", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_s1, textvariable=self.vars["motor_solar_baudrate"], width=10).pack(side="left", padx=(ui(2), ui(12)))
-
-        f_s2 = ttk.Frame(lf_solar, style="Params.TFrame")
-        f_s2.pack(fill="x", pady=ui(2))
-        ttk.Label(f_s2, text="Modo luz:", style="Params.TLabel").pack(side="left")
-        for txt, val in [("Desactivado", "off"), ("Irradiancia (mW/cm²)", "potencia"), ("Longitud de onda", "longitud_onda")]:
-            ttk.Radiobutton(f_s2, text=txt, variable=self.vars["motor_solar_modo"], value=val, command=self._actualizar_ui_solar_motor, style="Params.TRadiobutton").pack(side="left", padx=ui(6))
-
-        f_s3 = ttk.Frame(lf_solar, style="Params.TFrame")
-        f_s3.pack(fill="x", pady=ui(2))
-        ttk.Label(f_s3, text="Irradiancia objetivo (mW/cm²):", style="Params.TLabel").pack(side="left")
-        self.entry_mot_pot = ttk.Entry(f_s3, textvariable=self.vars["motor_solar_potencia"], width=8)
-        self.entry_mot_pot.pack(side="left", padx=(ui(2), ui(14)))
-        ttk.Label(f_s3, text="Tiempo luz encendida hasta medir (s):", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_s3, textvariable=self.vars["motor_espera_luz"], width=8).pack(side="left", padx=(ui(2), ui(10)))
-
-        f_s4 = ttk.Frame(lf_solar, style="Params.TFrame")
-        f_s4.pack(fill="x", pady=ui(2))
-        ttk.Label(f_s4, text="Canal / Longitud de onda:", style="Params.TLabel").pack(side="left")
-        self.cb_mot_ch = ttk.Combobox(
-            f_s4, textvariable=self.vars["motor_solar_longitud_onda"],
-            values=[d for d, _ in self.SOLAR_CANALES], state="readonly", width=14,
-        )
-        self.cb_mot_ch.pack(side="left", padx=(ui(2), ui(14)))
-        ttk.Label(f_s4, text="Intensidad (%):", style="Params.TLabel").pack(side="left")
-        self.entry_mot_intens = ttk.Entry(f_s4, textvariable=self.vars["motor_solar_intensidad_pct"], width=8)
-        self.entry_mot_intens.pack(side="left", padx=(ui(2), ui(10)))
-
-        self._actualizar_ui_solar_motor()
-
         f_exp_time = ttk.Frame(parent, style="Params.TFrame")
         f_exp_time.pack(fill="x", padx=ui(6), pady=ui(3))
         ttk.Label(
