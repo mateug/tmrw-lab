@@ -3,8 +3,7 @@
 Sigue la estructura, estilos temáticos y jerarquía visual de iv-maker:
   [1] Guardado de Datos (encima de Keithley)
   [2] Keithley 2450 — Barrido I-V
-  [3] Combinatoria de Ejes Activos (con explicación didáctica y ejemplos)
-  [4] Control de Medición (con botonería estilizada: Primary, Quick, Danger, Tool)
+  [3] Control de Medición (con botonería estilizada: Primary, Quick, Danger, Tool)
 """
 from __future__ import annotations
 
@@ -92,54 +91,9 @@ def crear_panel_medida_fijo(
     ttk.Checkbutton(f_opts, text="Sense 4 hilos (tensión real)", variable=vars_dict["medir_tension_real"], style="Keithley.TCheckbutton").pack(side="left", padx=ui(10))
 
     # =========================================================================
-    # [3] Relación entre Ejes Activos (Con explicación didáctica y ejemplo)
+    # [3] Control de Medición (Botonería estilizada)
     # =========================================================================
-    f_comb = crear_seccion_frame(f_main, "[3] Combinatoria de Ejes Activos", "params")
-    f_comb.pack(fill="x", padx=ui(4), pady=ui(4))
-
-    f_radios = ttk.Frame(f_comb, style="Params.TFrame")
-    f_radios.pack(fill="x", padx=ui(6), pady=ui(2))
-    ttk.Label(f_radios, text="Relación entre ejes:", style="Params.TLabel").pack(side="left", padx=ui(4))
-    ttk.Radiobutton(f_radios, text="Producto cartesiano (1-N)", variable=vars_dict["relacion_ejes"], value="1-N", style="Params.TRadiobutton").pack(side="left", padx=ui(8))
-    ttk.Radiobutton(f_radios, text="Emparejamiento directo (1-1)", variable=vars_dict["relacion_ejes"], value="1-1", style="Params.TRadiobutton").pack(side="left", padx=ui(8))
-
-    # Explicación con ejemplos
-    f_expl = ttk.Frame(f_comb, style="Params.TFrame")
-    f_expl.pack(fill="x", padx=ui(6), pady=(ui(2), ui(4)))
-
-    # Configurar pesos de columna para que distribuyan el espacio equitativamente
-    f_expl.columnconfigure(0, weight=1)
-    f_expl.columnconfigure(1, weight=1)
-
-    ttk.Label(
-        f_expl,
-        text=(
-            "• Producto cartesiano (1-N): Se miden todas las combinaciones posibles entre los ejes activos.\n"
-            "  Ejemplo: 3 posiciones de motor × 4 longitudes de onda LED = 12 medidas en total."
-        ),
-        font=ui_font("Segoe UI", 4.5),
-        foreground=theme_mgr.get_current_theme().get("fg_muted", "#475569"),
-        style="Params.TLabel",
-        justify="left",
-    ).grid(row=0, column=0, sticky="nw", padx=ui(4)) # Añadido row=0 y sticky "nw"
-
-    ttk.Label(
-        f_expl,
-        text=(
-            "• Emparejamiento directo (1-1): Se empareja el paso i de un eje con el paso i del otro.\n"
-            "  Ejemplo: Posición 1 con LED 1, Posición 2 con LED 2, etc. (2 medidas en total)."
-        ),
-        font=ui_font("Segoe UI", 4.5),
-        foreground=theme_mgr.get_current_theme().get("fg_muted", "#475569"),
-        style="Params.TLabel",
-        justify="left",
-    ).grid(row=0, column=1, sticky="nw", padx=ui(4)) # Añadido row=0 y sticky "nw"
-
-
-    # =========================================================================
-    # [4] Control de Medición (Botonería estilizada)
-    # =========================================================================
-    f_ctrl_sec = crear_seccion_frame(f_main, "[4] Control de Medición", "control")
+    f_ctrl_sec = crear_seccion_frame(f_main, "[3] Control de Medición", "control")
     f_ctrl_sec.pack(fill="x", padx=ui(4), pady=ui(4))
 
     f_btns = ttk.Frame(f_ctrl_sec, style="Control.TFrame")

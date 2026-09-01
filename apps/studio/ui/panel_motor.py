@@ -49,10 +49,8 @@ class PanelEjesMotor(ttk.Frame):
         f_sec = crear_seccion_frame(self, "Ejes Motor — Control Espacial de Posición", "params")
         f_sec.pack(fill="both", expand=True, padx=ui(4), pady=ui(4))
 
-        # Toggle activar eje motor general
         f_top = ttk.Frame(f_sec, style="Params.TFrame")
         f_top.pack(fill="x", padx=ui(6), pady=ui(3))
-
         ttk.Checkbutton(
             f_top,
             text="Activar eje de motor en la secuencia de medidas",
@@ -60,46 +58,64 @@ class PanelEjesMotor(ttk.Frame):
             style="Params.TCheckbutton",
         ).pack(side="left")
 
-        # Sub-Notebook para soportar múltiples motores
         nb_motores = ttk.Notebook(f_sec)
         nb_motores.pack(fill="both", expand=True, padx=ui(4), pady=ui(4))
 
-        # ── Sub-pestaña 1: Motor Lineal 1 (Eje X) ────────────────────────────
         f_m1 = ttk.Frame(nb_motores, style="Params.TFrame")
         nb_motores.add(f_m1, text="Motor Lineal 1 (Eje X)")
-        self._build_motor_lineal_1(f_m1)
+        self._build_motor_tab(f_m1, "lineal", "motor")
 
-    def _build_motor_lineal_1(self, parent):
+        f_m2 = ttk.Frame(nb_motores, style="Params.TFrame")
+        nb_motores.add(f_m2, text="Motor Inclinación")
+        self._build_motor_tab(f_m2, "inclinacion", "motor_inclinacion")
+
+        f_m3 = ttk.Frame(nb_motores, style="Params.TFrame")
+        nb_motores.add(f_m3, text="Motor Rotación")
+        self._build_motor_tab(f_m3, "rotacion", "motor_rotacion")
+
+    def _build_motor_tab(self, parent, eje_key, prefijo):
         t = theme_mgr.get_current_theme()
 
-        # 1. Conexión y Parámetros cinemáticos
-        f_params = ttk.LabelFrame(parent, text=" Parámetros de Barrido Lineal ", padding=ui(6), style="Params.TLabelframe")
+        activo_key = {
+            "motor": "motor_lineal_activo",
+            "motor_inclinacion": "motor_inclinacion_activo",
+            "motor_rotacion": "motor_rotacion_activo",
+        }.get(prefijo, f"{prefijo}_activo")
+
+        chk_active = ttk.Checkbutton(
+            parent,
+            text=f"Activar eje {eje_key.replace('_', ' ').title()}",
+            variable=self.vars[activo_key],
+            style="Params.TCheckbutton",
+        )
+        chk_active.pack(anchor="w", padx=ui(8), pady=(ui(6), ui(2)))
+
+        f_params = ttk.LabelFrame(parent, text=" Parámetros de Barrido ", padding=ui(6), style="Params.TLabelframe")
         f_params.pack(fill="x", padx=ui(4), pady=ui(4))
 
         f_p1 = ttk.Frame(f_params, style="Params.TFrame")
         f_p1.pack(fill="x", pady=ui(2))
         ttk.Label(f_p1, text="Puerto COM:", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_p1, textvariable=self.vars["motor_puerto_serie"], width=8).pack(side="left", padx=(ui(2), ui(12)))
+        ttk.Entry(f_p1, textvariable=self.vars[f"{prefijo}_puerto_serie"], width=8).pack(side="left", padx=(ui(2), ui(12)))
         ttk.Label(f_p1, text="Baudrate:", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_p1, textvariable=self.vars["motor_baudrate"], width=10).pack(side="left", padx=(ui(2), ui(12)))
+        ttk.Entry(f_p1, textvariable=self.vars[f"{prefijo}_baudrate"], width=10).pack(side="left", padx=(ui(2), ui(12)))
 
         f_p2 = ttk.Frame(f_params, style="Params.TFrame")
         f_p2.pack(fill="x", pady=ui(3))
         ttk.Label(f_p2, text="Step (pasos):", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_p2, textvariable=self.vars["motor_step_pasos"], width=10).pack(side="left", padx=(ui(2), ui(10)))
+        ttk.Entry(f_p2, textvariable=self.vars[f"{prefijo}_step_pasos"], width=10).pack(side="left", padx=(ui(2), ui(10)))
         ttk.Label(f_p2, text="Stop (pasos):", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_p2, textvariable=self.vars["motor_stop_pasos"], width=10).pack(side="left", padx=(ui(2), ui(10)))
+        ttk.Entry(f_p2, textvariable=self.vars[f"{prefijo}_stop_pasos"], width=10).pack(side="left", padx=(ui(2), ui(10)))
         ttk.Label(f_p2, text="Resolución (mm/paso):", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_p2, textvariable=self.vars["motor_resolucion_mm_paso"], width=10).pack(side="left", padx=(ui(2), ui(10)))
+        ttk.Entry(f_p2, textvariable=self.vars[f"{prefijo}_resolucion_mm_paso"], width=10).pack(side="left", padx=(ui(2), ui(10)))
         ttk.Label(f_p2, text="Espera estabilización (s):", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_p2, textvariable=self.vars["motor_espera_s"], width=8).pack(side="left", padx=(ui(2), ui(6)))
+        ttk.Entry(f_p2, textvariable=self.vars[f"{prefijo}_espera_s"], width=8).pack(side="left", padx=(ui(2), ui(6)))
 
         f_p3 = ttk.Frame(f_params, style="Params.TFrame")
         f_p3.pack(fill="x", pady=ui(2))
-        ttk.Checkbutton(f_p3, text="Poner a cero al conectar", variable=self.vars["motor_poner_cero_conectar"], style="Params.TCheckbutton").pack(side="left", padx=(0, ui(14)))
-        ttk.Checkbutton(f_p3, text="Volver a cero al finalizar", variable=self.vars["motor_volver_cero_final"], style="Params.TCheckbutton").pack(side="left", padx=ui(14))
+        ttk.Checkbutton(f_p3, text="Poner a cero al conectar", variable=self.vars[f"{prefijo}_poner_cero_conectar"], style="Params.TCheckbutton").pack(side="left", padx=(0, ui(14)))
+        ttk.Checkbutton(f_p3, text="Volver a cero al finalizar", variable=self.vars[f"{prefijo}_volver_cero_final"], style="Params.TCheckbutton").pack(side="left", padx=ui(14))
 
-        # 2. Simulador Solar integrado durante el barrido de motor
         lf_solar = ttk.LabelFrame(parent, text=" Simulador Solar para Medidas Motorizadas ", padding=ui(6), style="Params.TLabelframe")
         lf_solar.pack(fill="x", padx=ui(4), pady=ui(4))
 
@@ -138,7 +154,6 @@ class PanelEjesMotor(ttk.Frame):
 
         self._actualizar_ui_solar_motor()
 
-        # Explicación de tiempos del motor
         f_exp_time = ttk.Frame(parent, style="Params.TFrame")
         f_exp_time.pack(fill="x", padx=ui(6), pady=ui(3))
         ttk.Label(
@@ -153,7 +168,6 @@ class PanelEjesMotor(ttk.Frame):
             justify="left",
         ).pack(anchor="w", padx=ui(4))
 
-        # 3. Acciones Manuales de Centrado y Jogging
         f_centrado = ttk.LabelFrame(parent, text=" Acciones Manuales de Centrado y Posición ", padding=ui(6), style="Params.TLabelframe")
         f_centrado.pack(fill="x", padx=ui(4), pady=ui(4))
 
@@ -161,7 +175,7 @@ class PanelEjesMotor(ttk.Frame):
         f_c1.pack(fill="x", pady=ui(2))
 
         ttk.Label(f_c1, text="Pasos:", style="Params.TLabel").pack(side="left", padx=(0, ui(4)))
-        ttk.Entry(f_c1, textvariable=self.vars["motor_manual_pasos"], width=10).pack(side="left", padx=(0, ui(6)))
+        ttk.Entry(f_c1, textvariable=self.vars[f"{prefijo}_manual_pasos"], width=10).pack(side="left", padx=(0, ui(6)))
         ttk.Button(f_c1, text="Mover pasos exactos", command=self._on_mover_pasos_exactos, style="Tool.TButton").pack(side="left", padx=(0, ui(10)))
 
         btn_menos = ttk.Button(f_c1, text="◄ -Mover Continuo", style="Tool.TButton")

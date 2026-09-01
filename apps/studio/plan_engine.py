@@ -269,35 +269,52 @@ def construir_eje_leds(cfg: dict) -> list[dict]:
 
 
 def construir_eje_motor(cfg: dict) -> list[dict]:
-    """Construye la lista de posiciones para el eje de motor lineal."""
-    if not cfg.get("barrido_motor_activo", False):
-        return [{"motor_activo": False, "posicion_pasos": 0, "posicion_mm": 0.0}]
+    """Construye la lista de posiciones para los ejes de motor activos."""
+    motores_activados = []
+    if cfg.get("motor_lineal_activo", cfg.get("barrido_motor_activo", False)):
+        motores_activados.append({"eje": "lineal", "config": cfg["motor"]})
+    if cfg.get("motor_inclinacion_activo", False):
+        motores_activados.append({"eje": "inclinacion", "config": cfg["motor"].get("inclinacion", cfg["motor"])})
+    if cfg.get("motor_rotacion_activo", False):
+        motores_activados.append({"eje": "rotacion", "config": cfg["motor"].get("rotacion", cfg["motor"])})
 
-    posiciones_pasos = validar_configuracion_motor(cfg)
-    if posiciones_pasos.size == 0:
-        raise ValueError("No hay posiciones de motor configuradas.")
+    if not motores_activados:
+        return [{"motor_activo": False, "eje": None, "posicion_pasos": 0, "posicion_mm": 0.0}]
 
-    resolucion = float(cfg["motor"]["resolucion_mm_paso"])
-    return [
-        {
-            "motor_activo": True,
-            "posicion_pasos": int(p),
-            "posicion_mm": float(p * resolucion),
-        }
-        for p in posiciones_pasos
-    ]
+    posiciones = []
+    for motor in motores_activados:
+        eje_cfg = motor["config"]
+        posiciones_pasos = validar_configuracion_motor({**cfg, "motor": eje_cfg})
+        if posiciones_pasos.size == 0:
+            continue
+        resolucion = float(eje_cfg.get("resolucion_mm_paso", cfg["motor"].get("resolucion_mm_paso", 0.00128)))
+        for p in posiciones_pasos:
+            posiciones.append({
+                "motor_activo": True,
+                "eje": motor["eje"],
+                "posicion_pasos": int(p),
+                "posicion_mm": float(p * resolucion),
+            })
+
+    if not posiciones:
+        return [{"motor_activo": False, "eje": None, "posicion_pasos": 0, "posicion_mm": 0.0}]
+
+    return posiciones
 
 
 def construir_eje_estructura(cfg: dict) -> list[dict]:
     """Construye la lista de selecciones para el eje de estructura."""
     if not cfg.get("eje_estructura_activo", False):
-        return [{"estructura_activa": False, "estructura": None}]
+        return [{"estructura_activa": False, "estructura": None, "keithley": {}}]
 
-    estructuras = cfg.get("estructuras_disponibles", ["Estructura 1"])
+    estructura_cfg = cfg.get("estructura", {})
+    estructuras = estructura_cfg.get("estructuras") or cfg.get("estructuras_disponibles", ["Estructura 1"])
+    keithley_por_estructura = estructura_cfg.get("keithley_por_estructura", {})
     return [
         {
             "estructura_activa": True,
             "estructura": str(est),
+            "keithley": keithley_por_estructura.get(str(est), {}),
         }
         for est in estructuras
     ]
@@ -306,27 +323,19 @@ def construir_eje_estructura(cfg: dict) -> list[dict]:
 def generar_plan_estudio(cfg: dict) -> list[dict]:
     """Genera el plan de medidas multidimensional combinando los ejes activos.
 
-    Si ningún eje está activo -> plan de 1 fila (medida estática única).
-    Si 1 eje activo -> lista directa de ese eje.
-    Si múltiples ejes activos:
-      - "1-N": producto cartesiano de los ejes activos.
-      - "1-1": emparejamiento 1 a 1 por índice (hasta el tamaño máximo o mínimo).
+    La relación entre ejes activos es siempre producto cartesiano 1-N en Studio.
+    Se mantiene compatibilidad con configuraciones antiguas en las que se hubiese
+    especificado "1-1", pero en la práctica se normaliza a "1-N" para evitar
+    comportamiento inesperado en la secuencia de medidas.
     """
     eje_est = construir_eje_estructura(cfg)
     eje_mot = construir_eje_motor(cfg)
     eje_led = construir_eje_leds(cfg)
 
-    relacion = cfg.get("relacion_ejes", "1-N")
-
-    if relacion == "1-N":
-        combinaciones = list(itertools.product(eje_est, eje_mot, eje_led))
-    else:  # "1-1"
-        max_len = max(len(eje_est), len(eje_mot), len(eje_led))
-        # Ciclar o rellenar con el último valor
-        est_cycle = (eje_est * ((max_len // len(eje_est)) + 1))[:max_len]
-        mot_cycle = (eje_mot * ((max_len // len(eje_mot)) + 1))[:max_len]
-        led_cycle = (eje_led * ((max_len // len(eje_led)) + 1))[:max_len]
-        combinaciones = list(zip(est_cycle, mot_cycle, led_cycle))
+    # Compatibilidad legacy: si existía una configuración antigua con 1-1,
+    # se ignora y se utiliza siempre el producto cartesiano.
+    _ = cfg.get("relacion_ejes", "1-N")
+    combinaciones = list(itertools.product(eje_est, eje_mot, eje_led))
 
     plan = []
     for idx, (est_info, mot_info, led_info) in enumerate(combinaciones, start=1):

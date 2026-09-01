@@ -52,6 +52,7 @@ class StudioFrame(ttk.Frame):
         iw = c.get("irradiancia_longitud_onda", {})
 
         canales_11 = ["390", "450", "515", "cool_white", "warm_white", "600", "630", "660", "730", "850", "950"]
+        estructuras_base = ["Estructura 1", "Estructura 2", "Estructura 3"]
 
         self.vars = {
             # Salida y Guardado
@@ -77,7 +78,10 @@ class StudioFrame(ttk.Frame):
             "barrido_motor_activo": tk.BooleanVar(value=c.get("barrido_motor_activo", False)),
             "simulador_solar_activo": tk.BooleanVar(value=c.get("simulador_solar_activo", False)),
             "eje_estructura_activo": tk.BooleanVar(value=c.get("eje_estructura_activo", False)),
-            # Motor Lineal
+            # Motores (lineal, inclinación y rotación)
+            "motor_lineal_activo": tk.BooleanVar(value=c.get("motor_lineal_activo", True)),
+            "motor_inclinacion_activo": tk.BooleanVar(value=c.get("motor_inclinacion_activo", False)),
+            "motor_rotacion_activo": tk.BooleanVar(value=c.get("motor_rotacion_activo", False)),
             "motor_puerto_serie": tk.StringVar(value=m.get("puerto_serie", "COM4")),
             "motor_baudrate": tk.StringVar(value=str(m.get("baudrate", 115200))),
             "motor_step_pasos": tk.StringVar(value=str(m.get("step_pasos", -625))),
@@ -87,6 +91,24 @@ class StudioFrame(ttk.Frame):
             "motor_poner_cero_conectar": tk.BooleanVar(value=m.get("poner_cero_al_conectar", True)),
             "motor_volver_cero_final": tk.BooleanVar(value=m.get("volver_cero_al_final", False)),
             "motor_manual_pasos": tk.StringVar(value=str(m.get("pasos_centrado_pulsacion", 1))),
+            "motor_inclinacion_puerto_serie": tk.StringVar(value=m.get("inclinacion", {}).get("puerto_serie", "COM5")),
+            "motor_inclinacion_baudrate": tk.StringVar(value=str(m.get("inclinacion", {}).get("baudrate", 115200))),
+            "motor_inclinacion_step_pasos": tk.StringVar(value=str(m.get("inclinacion", {}).get("step_pasos", -625))),
+            "motor_inclinacion_stop_pasos": tk.StringVar(value=str(m.get("inclinacion", {}).get("stop_pasos", -62500))),
+            "motor_inclinacion_resolucion_mm_paso": tk.StringVar(value=str(m.get("inclinacion", {}).get("resolucion_mm_paso", 0.00128))),
+            "motor_inclinacion_espera_s": tk.StringVar(value=str(m.get("inclinacion", {}).get("espera_estabilizacion_s", 0.0))),
+            "motor_inclinacion_poner_cero_conectar": tk.BooleanVar(value=m.get("inclinacion", {}).get("poner_cero_al_conectar", True)),
+            "motor_inclinacion_volver_cero_final": tk.BooleanVar(value=m.get("inclinacion", {}).get("volver_cero_al_final", False)),
+            "motor_inclinacion_manual_pasos": tk.StringVar(value=str(m.get("inclinacion", {}).get("pasos_centrado_pulsacion", 1))),
+            "motor_rotacion_puerto_serie": tk.StringVar(value=m.get("rotacion", {}).get("puerto_serie", "COM6")),
+            "motor_rotacion_baudrate": tk.StringVar(value=str(m.get("rotacion", {}).get("baudrate", 115200))),
+            "motor_rotacion_step_pasos": tk.StringVar(value=str(m.get("rotacion", {}).get("step_pasos", -625))),
+            "motor_rotacion_stop_pasos": tk.StringVar(value=str(m.get("rotacion", {}).get("stop_pasos", -62500))),
+            "motor_rotacion_resolucion_mm_paso": tk.StringVar(value=str(m.get("rotacion", {}).get("resolucion_mm_paso", 0.00128))),
+            "motor_rotacion_espera_s": tk.StringVar(value=str(m.get("rotacion", {}).get("espera_estabilizacion_s", 0.0))),
+            "motor_rotacion_poner_cero_conectar": tk.BooleanVar(value=m.get("rotacion", {}).get("poner_cero_al_conectar", True)),
+            "motor_rotacion_volver_cero_final": tk.BooleanVar(value=m.get("rotacion", {}).get("volver_cero_al_final", False)),
+            "motor_rotacion_manual_pasos": tk.StringVar(value=str(m.get("rotacion", {}).get("pasos_centrado_pulsacion", 1))),
             "motor_solar_puerto": tk.StringVar(value=s.get("puerto_serie", "COM3")),
             "motor_solar_baudrate": tk.StringVar(value=str(s.get("baudrate", 9600))),
             "motor_solar_modo": tk.StringVar(value=m.get("simulador_solar_modo", "off")),
@@ -113,7 +135,9 @@ class StudioFrame(ttk.Frame):
             "solar_tiempo_enfriado_s": tk.StringVar(value="0.0"),
             "solar_apagar_al_final": tk.BooleanVar(value=True),
             # Estructura
-            "estructura_lista": tk.StringVar(value="A, B"),
+            "estructura_disponibles": estructuras_base,
+            "estructura_seleccionadas_dict": {name: tk.BooleanVar(value=name in {"Estructura 1", "Estructura 2"}) for name in estructuras_base},
+            "estructura_lista": tk.StringVar(value="Estructura 1, Estructura 2"),
             "estructura_espera_s": tk.StringVar(value="0.5"),
         }
 
@@ -217,8 +241,11 @@ class StudioFrame(ttk.Frame):
         cfg["invertir_eje_y_graficas"] = v["invertir_eje_y"].get()
         cfg["medir_tension_real"] = v["medir_tension_real"].get()
 
-        cfg["relacion_ejes"] = v["relacion_ejes"].get()
+        cfg["relacion_ejes"] = "1-N"
         cfg["barrido_motor_activo"] = v["barrido_motor_activo"].get()
+        cfg["motor_lineal_activo"] = v["motor_lineal_activo"].get()
+        cfg["motor_inclinacion_activo"] = v["motor_inclinacion_activo"].get()
+        cfg["motor_rotacion_activo"] = v["motor_rotacion_activo"].get()
         cfg["simulador_solar_activo"] = v["simulador_solar_activo"].get()
         cfg["eje_estructura_activo"] = v["eje_estructura_activo"].get()
 
@@ -236,6 +263,28 @@ class StudioFrame(ttk.Frame):
         cfg["motor"]["solar_longitud_onda"] = v["motor_solar_longitud_onda"].get()
         cfg["motor"]["solar_intensidad_pct"] = float(v["motor_solar_intensidad_pct"].get() or 100)
         cfg["motor"]["espera_luz_encendida_s"] = float(v["motor_espera_luz"].get() or 0.0)
+        cfg["motor"]["inclinacion"] = {
+            "puerto_serie": v["motor_inclinacion_puerto_serie"].get().strip(),
+            "baudrate": int(v["motor_inclinacion_baudrate"].get() or 115200),
+            "step_pasos": int(v["motor_inclinacion_step_pasos"].get() or -625),
+            "stop_pasos": int(v["motor_inclinacion_stop_pasos"].get() or -62500),
+            "resolucion_mm_paso": float(v["motor_inclinacion_resolucion_mm_paso"].get() or 0.00128),
+            "espera_estabilizacion_s": float(v["motor_inclinacion_espera_s"].get() or 0.0),
+            "poner_cero_al_conectar": v["motor_inclinacion_poner_cero_conectar"].get(),
+            "volver_cero_al_final": v["motor_inclinacion_volver_cero_final"].get(),
+            "pasos_centrado_pulsacion": int(v["motor_inclinacion_manual_pasos"].get() or 1),
+        }
+        cfg["motor"]["rotacion"] = {
+            "puerto_serie": v["motor_rotacion_puerto_serie"].get().strip(),
+            "baudrate": int(v["motor_rotacion_baudrate"].get() or 115200),
+            "step_pasos": int(v["motor_rotacion_step_pasos"].get() or -625),
+            "stop_pasos": int(v["motor_rotacion_stop_pasos"].get() or -62500),
+            "resolucion_mm_paso": float(v["motor_rotacion_resolucion_mm_paso"].get() or 0.00128),
+            "espera_estabilizacion_s": float(v["motor_rotacion_espera_s"].get() or 0.0),
+            "poner_cero_al_conectar": v["motor_rotacion_poner_cero_conectar"].get(),
+            "volver_cero_al_final": v["motor_rotacion_volver_cero_final"].get(),
+            "pasos_centrado_pulsacion": int(v["motor_rotacion_manual_pasos"].get() or 1),
+        }
 
         # Iluminación
         cfg["simulador_solar"]["puerto_serie"] = v["solar_puerto_serie"].get().strip()
@@ -253,8 +302,22 @@ class StudioFrame(ttk.Frame):
         cfg["irradiancia_combinacion"]["canales_combinacion"] = v["solar_canales_comb_lista"]
 
         # Estructura
-        cfg["estructura"]["estructuras"] = [e.strip() for e in v["estructura_lista"].get().split(",") if e.strip()]
+        estructura_lista = [e.strip() for e in v["estructura_lista"].get().split(",") if e.strip()]
+        cfg["estructura"]["estructuras"] = estructura_lista
         cfg["estructura"]["espera_estabilizacion_s"] = float(v["estructura_espera_s"].get() or 0.5)
+        cfg["estructura"]["keithley_por_estructura"] = {
+            nombre: {
+                "recurso_visa": v["recurso_visa"].get().strip(),
+                "modo_medida": v["modo_medida"].get().strip(),
+                "i_max_uA": float(v["i_max_uA"].get() or 10.0),
+                "v_inicial_mV": float(v["v_ini_dir"].get() or 0.0),
+                "v_final_mV": float(v["v_fin_dir"].get() or 600.0),
+                "paso_mV": float(v["paso_dir"].get() or 10.0),
+                "v_final_inversa_V": float(v["v_fin_inv"].get() or -0.5),
+                "paso_inversa_mV": float(v["paso_inv"].get() or 10.0),
+            }
+            for nombre in estructura_lista
+        }
 
         return cfg
 
