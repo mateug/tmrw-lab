@@ -44,7 +44,6 @@ class PanelEjeEstructura(ttk.Frame):
 
         self.lista_frame = ttk.Frame(f_sel, style="Params.TFrame")
         self.lista_frame.pack(fill="both", expand=True)
-        self._render_estructuras()
 
         f_cfg = ttk.LabelFrame(f_layout, text=" Configuración Keithley por estructura ", padding=ui(6), style="Params.TLabelframe")
         f_cfg.pack(side="right", fill="both", expand=True)
@@ -60,7 +59,7 @@ class PanelEjeEstructura(ttk.Frame):
         self.cfg_frame.bind("<Configure>", self._on_configure_cfg_list)
         self.canvas_cfg.bind("<Configure>", self._on_configure_cfg_canvas)
 
-        self._render_configuracion_keithley()
+        self._render_estructuras()
 
         f_info = ttk.Frame(f_sec, style="Params.TFrame")
         f_info.pack(fill="x", padx=ui(6), pady=ui(4))
@@ -114,9 +113,15 @@ class PanelEjeEstructura(ttk.Frame):
             row.pack(fill="x", pady=ui(2), padx=ui(2))
             var = self.vars["estructura_seleccionadas_dict"].setdefault(nombre, tk.BooleanVar(value=True))
             name_var = self.vars["estructura_nombres_dict"].setdefault(nombre, tk.StringVar(value=nombre))
-            ttk.Checkbutton(row, variable=var, style="Params.TCheckbutton").pack(side="left")
-            ttk.Entry(row, textvariable=name_var, width=18).pack(side="left", padx=(ui(8), 0))
+            ttk.Checkbutton(row, variable=var, command=self._on_estructura_toggle, style="Params.TCheckbutton").pack(side="left")
+            ttk.Label(row, text=nombre, style="Params.TLabel").pack(side="left", padx=(ui(8), ui(6)))
+            ttk.Entry(row, textvariable=name_var, width=18).pack(side="left")
         self._sincronizar_lista_estructuras()
+        self._render_configuracion_keithley()
+
+    def _on_estructura_toggle(self):
+        self._sincronizar_lista_estructuras()
+        self._render_configuracion_keithley()
 
     def _render_configuracion_keithley(self):
         for w in self.cfg_frame.winfo_children():

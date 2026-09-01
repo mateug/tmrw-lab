@@ -52,7 +52,15 @@ class StudioFrame(ttk.Frame):
         iw = c.get("irradiancia_longitud_onda", {})
 
         canales_11 = ["390", "450", "515", "cool_white", "warm_white", "600", "630", "660", "730", "850", "950"]
-        estructuras_base = ["Estructura 1", "Estructura 2", "Estructura 3"]
+        estructuras_base = [
+            "Estructura 1",
+            "Estructura 2",
+            "Estructura 3",
+            "Estructura 4",
+            "Estructura 5",
+            "Estructura 6",
+            "Estructura 7",
+        ]
 
         self.vars = {
             # Salida y Guardado
