@@ -178,6 +178,13 @@ class PanelEjeEstructura(ttk.Frame):
             ttk.Label(row3, text="Paso inversa (mV):", style="Params.TLabel").pack(side="left")
             ttk.Entry(row3, textvariable=kvars["paso_inv"], width=10).pack(side="left", padx=(ui(2), ui(8)))
 
+            ttk.Checkbutton(
+                row3,
+                text="Invertir eje Y",
+                variable=kvars["invertir_eje_y"],
+                style="Params.TCheckbutton",
+            ).pack(side="left", padx=(ui(12), ui(4)))
+
         self._on_configure_cfg_list(None)
 
 

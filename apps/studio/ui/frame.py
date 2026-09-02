@@ -12,7 +12,6 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 
 from core.instrument.keithley import liberar_control_manual_keithley, conectar_y_verificar
-from core.instrument.ngu401 import NGU401
 from core.instrument.registry import abortar_instrumento_activo, abortar_motor_activo
 from core.plot.plotter import generar_imagen_tk_curvas_iv_pv
 from core.ui_kit.scaler import ui, ui_font, ui_font_console, ui_font_label, UIConfig
@@ -424,19 +423,9 @@ class StudioFrame(ttk.Frame):
         return cfg
 
     def _conectar_smu_studio(self, cfg):
-        """Intenta conectar el SMU del estudio, con fallback temporal a NGU401."""
-        modelo_esperado = str(cfg.get("smu_modelo_esperado", "2450")).upper()
+        """Conecta el Keithley 2450 usado por el modo Studio."""
         recurso = str(cfg.get("recurso_visa", "AUTO")).strip()
-
-        if modelo_esperado == "NGU401":
-            return "NGU401", NGU401(cfg).connect()
-
-        try:
-            return "Keithley 2450", conectar_y_verificar(recurso or "AUTO")
-        except Exception:
-            if modelo_esperado == "2450":
-                return "NGU401", NGU401(cfg).connect()
-            raise
+        return "Keithley 2450", conectar_y_verificar(recurso or "AUTO")
 
     def _on_iniciar(self):
         if self.ejecutando:
@@ -475,18 +464,9 @@ class StudioFrame(ttk.Frame):
         def _hilo_rapida():
             try:
                 from core.measure.run_keithley import run as run_k
-                try:
-                    smu = conectar_y_verificar(cfg.get("recurso_visa", ""))
-                    nombre_smu = "Keithley 2450"
-                except Exception:
-                    smu = NGU401(cfg).connect()
-                    nombre_smu = "NGU401"
-                self.cola_ui.put(("log", f"[i] Instrumento de diagnóstico: {nombre_smu}\n"))
-                if nombre_smu == "NGU401":
-                    from core.measure.run_ngu401 import run_atomic
-                    datos = run_atomic(cfg, "Estructura 1", 1, smu=smu, guardar_archivos=False)
-                else:
-                    datos = run_k(cfg, smu=smu, evento_aborto=self.evento_aborto)
+                smu = conectar_y_verificar(cfg.get("recurso_visa", ""))
+                self.cola_ui.put(("log", "[i] Instrumento de diagnóstico: Keithley 2450\n"))
+                datos = run_k(cfg)
                 self.cola_ui.put(("log", f"[✓] Medida rápida completada ({len(datos.get('voltaje_V', []))} puntos).\n"))
             except Exception as exc:
                 self.cola_ui.put(("log", f"[ERROR] Fallo en medida rápida: {exc}\n"))
@@ -507,12 +487,8 @@ class StudioFrame(ttk.Frame):
         try:
             liberar_control_manual_keithley(self.vars["recurso_visa"].get().strip())
             mostrar_info("Modo Manual", "Keithley 2450 liberado para control manual local.")
-        except Exception:
-            try:
-                NGU401(self._recoger_config()).connect().liberar_control_manual()
-                mostrar_info("Modo Manual", "NGU401 liberado para control manual local.")
-            except Exception as exc:
-                mostrar_error("Error", f"No se pudo liberar el SMU:\n{exc}")
+        except Exception as exc:
+            mostrar_error("Error", f"No se pudo liberar el SMU:\n{exc}")
 
     def _on_prueba_hardware(self):
         if self.ejecutando:
@@ -564,6 +540,8 @@ class StudioFrame(ttk.Frame):
                 if simulador is not None:
                     simulador.connect()
 
+            smu_obj = conectar_y_verificar(cfg.get("recurso_visa", ""))
+
             for idx, paso in enumerate(plan, 1):
                 if self.evento_aborto.is_set():
                     self.cola_ui.put(("log", "\n[⏹] Secuencia abortada por el usuario.\n"))
@@ -571,10 +549,28 @@ class StudioFrame(ttk.Frame):
 
                 if paso.get("tipo") == "medida":
                     estructura = paso.get("estructura")
+                    keithley_cfg = paso.get("keithley", {})
                     if estructura and rele is not None:
                         self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Seleccionando estructura: {estructura}\n"))
                         rele.select(estructura)
-                    self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando medida para {estructura or 'estructura no seleccionada'}\n"))
+                    self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando medida para {estructura or 'estructura no seleccionada'} (Keithley 2450)\n"))
+                    cfg_local = dict(cfg)
+                    cfg_local["estructura"] = dict(cfg.get("estructura", {}), estructuras=[estructura] if estructura else [])
+                    cfg_local["estructura"]["keithley_por_estructura"] = cfg.get("estructura", {}).get("keithley_por_estructura", {})
+                    if keithley_cfg:
+                        cfg_local["modo_medida"] = str(keithley_cfg.get("modo_medida", cfg.get("modo_medida", "directa"))).strip() or cfg.get("modo_medida", "directa")
+                        cfg_local["i_max_uA"] = float(keithley_cfg.get("i_max_uA", cfg.get("i_max_uA", 10.0)))
+                        cfg_local["i_max_A"] = cfg_local["i_max_uA"] * 1e-6
+                        cfg_local["directa"] = dict(cfg.get("directa", {}))
+                        cfg_local["directa"]["v_inicial_mV"] = float(keithley_cfg.get("v_inicial_mV", cfg_local["directa"].get("v_inicial_mV", 0.0)))
+                        cfg_local["directa"]["v_final_mV"] = float(keithley_cfg.get("v_final_mV", cfg_local["directa"].get("v_final_mV", 550.0)))
+                        cfg_local["directa"]["paso_mV"] = float(keithley_cfg.get("paso_mV", cfg_local["directa"].get("paso_mV", 10.0)))
+                        cfg_local["inversa"] = dict(cfg.get("inversa", {}))
+                        cfg_local["inversa"]["v_final_V"] = float(keithley_cfg.get("v_final_V", cfg_local["inversa"].get("v_final_V", -0.5)))
+                        cfg_local["inversa"]["paso_mV"] = float(keithley_cfg.get("paso_mV", cfg_local["inversa"].get("paso_mV", 10.0)))
+                        cfg_local["invertir_eje_y_graficas"] = bool(keithley_cfg.get("invertir_eje_y", cfg.get("invertir_eje_y_graficas", False)))
+                    from core.measure.run_keithley import run as run_keithley_medida
+                    run_keithley_medida(cfg_local)
                     time.sleep(0.1)
                 elif paso.get("tipo") == "enfriar":
                     self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Enfriamiento LED: apagando fuente durante {paso.get('duracion_s', 0.0)} s\n"))
@@ -600,6 +596,11 @@ class StudioFrame(ttk.Frame):
             if simulador is not None:
                 try:
                     simulador.close()
+                except Exception:
+                    pass
+            if smu_obj is not None:
+                try:
+                    smu_obj.close()
                 except Exception:
                     pass
             self.cola_ui.put(("fin_secuencia", None))
