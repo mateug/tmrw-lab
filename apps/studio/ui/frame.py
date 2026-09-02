@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 
 from core.instrument.keithley import liberar_control_manual_keithley, conectar_y_verificar
+from core.instrument.ngu401 import NGU401
 from core.instrument.registry import abortar_instrumento_activo, abortar_motor_activo
 from core.plot.plotter import generar_imagen_tk_curvas_iv_pv
 from core.ui_kit.scaler import ui, ui_font, ui_font_console, ui_font_label, UIConfig
@@ -166,6 +167,7 @@ class StudioFrame(ttk.Frame):
             "solar_espera_encendido_s": tk.StringVar(value="0.0"),
             "solar_espera_estab_s": tk.StringVar(value="1.0"),
             "solar_tiempo_enfriado_s": tk.StringVar(value="0.0"),
+            "solar_tiempo_espera_cada_n": tk.StringVar(value="0.0"),
             "solar_cada_n_medidas_estructura": tk.StringVar(value="0"),
             "solar_apagar_al_final": tk.BooleanVar(value=True),
             # Estructura
@@ -186,6 +188,8 @@ class StudioFrame(ttk.Frame):
                 for name in estructuras_base
             },
             "estructura_lista": tk.StringVar(value="Estructura 1, Estructura 2"),
+            "estructura_puerto_serie": tk.StringVar(value=c.get("estructura", {}).get("puerto_serie", "COM5")),
+            "estructura_baudrate": tk.StringVar(value=str(c.get("estructura", {}).get("baudrate", 9600))),
             "estructura_espera_s": tk.StringVar(value="0.5"),
         }
 
@@ -208,6 +212,7 @@ class StudioFrame(ttk.Frame):
             self.btn_rapida,
             self.btn_abortar,
             self.btn_manual,
+            self.btn_test,
         ) = crear_panel_medida_fijo(
             col_izq,
             self.vars,
@@ -215,6 +220,7 @@ class StudioFrame(ttk.Frame):
             callback_rapida=self._on_medida_rapida,
             callback_abortar=self._on_abortar,
             callback_modo_manual=self._on_modo_manual,
+            callback_prueba=self._on_prueba_hardware,
         )
         f_medida.pack(fill="x", pady=(0, ui(4)))
 
@@ -381,9 +387,11 @@ class StudioFrame(ttk.Frame):
         cfg["irradiancia_combinacion"]["relaciones"] = list(v.get("solar_canales_comb_relaciones", []))
         cfg["irradiancia_combinacion"]["cada_n_medidas_estructura"] = int(v["solar_cada_n_medidas_estructura"].get() or 0)
         cfg["irradiancia_combinacion"]["tiempo_enfriado_s"] = float(v["solar_tiempo_enfriado_s"].get() or 0.0)
+        cfg["irradiancia_combinacion"]["tiempo_espera_cada_n_s"] = float(v["solar_tiempo_espera_cada_n"].get() or 0.0)
         cfg["irradiancia_multiples_combinaciones"]["combinaciones"] = self._parsear_recetas_iluminacion()
         cfg["irradiancia_multiples_combinaciones"]["cada_n_medidas_estructura"] = int(v["solar_cada_n_medidas_estructura"].get() or 0)
         cfg["irradiancia_multiples_combinaciones"]["tiempo_enfriado_s"] = float(v["solar_tiempo_enfriado_s"].get() or 0.0)
+        cfg["irradiancia_multiples_combinaciones"]["tiempo_espera_cada_n_s"] = float(v["solar_tiempo_espera_cada_n"].get() or 0.0)
 
         # Estructura
         estructura_seleccionadas = [
@@ -393,6 +401,8 @@ class StudioFrame(ttk.Frame):
             v["estructura_nombres_dict"].get(nombre, tk.StringVar(value=nombre)).get().strip() or nombre
             for nombre in estructura_seleccionadas
         ]
+        cfg["estructura"]["puerto_serie"] = v["estructura_puerto_serie"].get().strip()
+        cfg["estructura"]["baudrate"] = int(v["estructura_baudrate"].get() or 9600)
         cfg["estructura"]["estructuras"] = estructura_nombres
         cfg["estructura"]["espera_estabilizacion_s"] = float(v["estructura_espera_s"].get() or 0.5)
         cfg["estructura"]["keithley_por_estructura"] = {}
@@ -413,6 +423,21 @@ class StudioFrame(ttk.Frame):
 
         return cfg
 
+    def _conectar_smu_studio(self, cfg):
+        """Intenta conectar el SMU del estudio, con fallback temporal a NGU401."""
+        modelo_esperado = str(cfg.get("smu_modelo_esperado", "2450")).upper()
+        recurso = str(cfg.get("recurso_visa", "AUTO")).strip()
+
+        if modelo_esperado == "NGU401":
+            return "NGU401", NGU401(cfg).connect()
+
+        try:
+            return "Keithley 2450", conectar_y_verificar(recurso or "AUTO")
+        except Exception:
+            if modelo_esperado == "2450":
+                return "NGU401", NGU401(cfg).connect()
+            raise
+
     def _on_iniciar(self):
         if self.ejecutando:
             return
@@ -427,6 +452,7 @@ class StudioFrame(ttk.Frame):
         self.evento_aborto.clear()
         self.btn_iniciar.configure(state="disabled")
         self.btn_rapida.configure(state="disabled")
+        self.btn_test.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
         self._set_badge("MIDIENDO", "#f59e0b", "#ffffff")
         self.txt_log.insert("end", f"\n>>> INICIANDO SECUENCIA ({len(plan)} pasos planificados)...\n")
@@ -441,6 +467,7 @@ class StudioFrame(ttk.Frame):
         self.evento_aborto.clear()
         self.btn_iniciar.configure(state="disabled")
         self.btn_rapida.configure(state="disabled")
+        self.btn_test.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
         self._set_badge("MEDIDA RÁPIDA", "#0284c7", "#ffffff")
         self.txt_log.insert("end", "\n>>> Ejecutando medida rápida de diagnóstico puntual...\n")
@@ -448,8 +475,18 @@ class StudioFrame(ttk.Frame):
         def _hilo_rapida():
             try:
                 from core.measure.run_keithley import run as run_k
-                smu = conectar_y_verificar(cfg.get("recurso_visa", ""))
-                datos = run_k(cfg, smu=smu, evento_aborto=self.evento_aborto)
+                try:
+                    smu = conectar_y_verificar(cfg.get("recurso_visa", ""))
+                    nombre_smu = "Keithley 2450"
+                except Exception:
+                    smu = NGU401(cfg).connect()
+                    nombre_smu = "NGU401"
+                self.cola_ui.put(("log", f"[i] Instrumento de diagnóstico: {nombre_smu}\n"))
+                if nombre_smu == "NGU401":
+                    from core.measure.run_ngu401 import run_atomic
+                    datos = run_atomic(cfg, "Estructura 1", 1, smu=smu, guardar_archivos=False)
+                else:
+                    datos = run_k(cfg, smu=smu, evento_aborto=self.evento_aborto)
                 self.cola_ui.put(("log", f"[✓] Medida rápida completada ({len(datos.get('voltaje_V', []))} puntos).\n"))
             except Exception as exc:
                 self.cola_ui.put(("log", f"[ERROR] Fallo en medida rápida: {exc}\n"))
@@ -470,8 +507,49 @@ class StudioFrame(ttk.Frame):
         try:
             liberar_control_manual_keithley(self.vars["recurso_visa"].get().strip())
             mostrar_info("Modo Manual", "Keithley 2450 liberado para control manual local.")
+        except Exception:
+            try:
+                NGU401(self._recoger_config()).connect().liberar_control_manual()
+                mostrar_info("Modo Manual", "NGU401 liberado para control manual local.")
+            except Exception as exc:
+                mostrar_error("Error", f"No se pudo liberar el SMU:\n{exc}")
+
+    def _on_prueba_hardware(self):
+        if self.ejecutando:
+            return
+        cfg = self._recoger_config()
+        self.ejecutando = True
+        self.evento_aborto.clear()
+        self.btn_iniciar.configure(state="disabled")
+        self.btn_rapida.configure(state="disabled")
+        self.btn_test.configure(state="disabled")
+        self.btn_abortar.configure(state="normal")
+        self._set_badge("TEST RELÉS", "#7c3aed", "#ffffff")
+        self.txt_log.insert("end", "\n>>> Probando relés y estructuras del eje Studio...\n")
+        threading.Thread(target=self._hilo_prueba_hardware, args=(cfg,), daemon=True).start()
+
+    def _hilo_prueba_hardware(self, cfg):
+        rele = None
+        try:
+            estructuras = cfg.get("estructura", {}).get("estructuras") or ["Estructura 1", "Estructura 2"]
+            rele = crear_rele_estructura(cfg, self.evento_aborto)
+            rele.connect()
+            for nombre in estructuras:
+                if self.evento_aborto.is_set():
+                    raise RuntimeError("Prueba abortada por el usuario.")
+                rele.select(nombre)
+                self.cola_ui.put(("log", f"[TEST] Estructura seleccionada: {nombre}\n"))
+                time.sleep(0.2)
+            self.cola_ui.put(("log", "[✓] Prueba de relés y estructuras completada correctamente.\n"))
         except Exception as exc:
-            mostrar_error("Error", f"No se pudo liberar el Keithley:\n{exc}")
+            self.cola_ui.put(("log", f"[ERROR] Prueba de relés/estructuras: {exc}\n"))
+        finally:
+            if rele is not None:
+                try:
+                    rele.close()
+                except Exception:
+                    pass
+            self.cola_ui.put(("fin_secuencia", None))
 
     def _hilo_secuencia(self, cfg, plan):
         rele = None
@@ -539,6 +617,8 @@ class StudioFrame(ttk.Frame):
                 self.ejecutando = False
                 self.btn_iniciar.configure(state="normal")
                 self.btn_rapida.configure(state="normal")
+                if hasattr(self, "btn_test"):
+                    self.btn_test.configure(state="normal")
                 self.btn_abortar.configure(state="disabled")
                 t = theme_mgr.get_current_theme()
                 res_c = t.get("results", {})

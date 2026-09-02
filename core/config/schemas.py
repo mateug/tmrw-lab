@@ -115,6 +115,7 @@ BLOQUE_SIMULADOR_SOLAR = {
         "espera_encendido_medida_s": 3.0,
         "cada_n_medidas_estructura": 0,
         "tiempo_enfriado_s": 0.0,
+        "tiempo_espera_cada_n_s": 0.0,
         "apagar_al_final": True,
     },
     "irradiancia_multiples_combinaciones": {
@@ -124,6 +125,7 @@ BLOQUE_SIMULADOR_SOLAR = {
         "espera_encendido_medida_s": 3.0,
         "cada_n_medidas_estructura": 0,
         "tiempo_enfriado_s": 0.0,
+        "tiempo_espera_cada_n_s": 0.0,
         "apagar_al_final": True,
     },
 }

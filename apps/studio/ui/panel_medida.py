@@ -22,6 +22,7 @@ def crear_panel_medida_fijo(
     callback_rapida,
     callback_abortar,
     callback_modo_manual,
+    callback_prueba,
 ):
     """Crea la sección fija izquierda de Studio con los estilos y temas de iv-maker."""
     f_main = ttk.Frame(parent, style="Window.TFrame")
@@ -81,4 +82,11 @@ def crear_panel_medida_fijo(
     )
     btn_manual.pack(side="left", padx=ui(4))
 
-    return f_main, btn_start, btn_quick, btn_stop, btn_manual
+    btn_test = ttk.Button(
+        f_btns, text="🧪 TEST RELÉS / ESTRUCTURAS",
+        style="Tool.TButton",
+        command=callback_prueba,
+    )
+    btn_test.pack(side="left", padx=ui(4))
+
+    return f_main, btn_start, btn_quick, btn_stop, btn_manual, btn_test

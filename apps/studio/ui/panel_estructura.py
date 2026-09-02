@@ -63,8 +63,15 @@ class PanelEjeEstructura(ttk.Frame):
 
         f_info = ttk.Frame(f_sec, style="Params.TFrame")
         f_info.pack(fill="x", padx=ui(6), pady=ui(4))
-        ttk.Label(f_info, text="Espera conmutación relé (s):", style="Params.TLabel").grid(row=0, column=0, sticky="w", padx=ui(4), pady=ui(2))
-        ttk.Entry(f_info, textvariable=self.vars.get("estructura_espera_s"), width=8).grid(row=0, column=1, sticky="w", padx=ui(4), pady=ui(2))
+
+        ttk.Label(f_info, text="Puerto COM Arduino:", style="Params.TLabel").grid(row=0, column=0, sticky="w", padx=(ui(4), ui(4)), pady=ui(2))
+        ttk.Entry(f_info, textvariable=self.vars.get("estructura_puerto_serie"), width=12).grid(row=0, column=1, sticky="w", padx=(0, ui(10)), pady=ui(2))
+
+        ttk.Label(f_info, text="Baudrate:", style="Params.TLabel").grid(row=0, column=2, sticky="w", padx=(ui(4), ui(4)), pady=ui(2))
+        ttk.Entry(f_info, textvariable=self.vars.get("estructura_baudrate"), width=10).grid(row=0, column=3, sticky="w", padx=(0, ui(10)), pady=ui(2))
+
+        ttk.Label(f_info, text="Espera conmutación relé (s):", style="Params.TLabel").grid(row=1, column=0, sticky="w", padx=(ui(4), ui(4)), pady=ui(2))
+        ttk.Entry(f_info, textvariable=self.vars.get("estructura_espera_s"), width=8).grid(row=1, column=1, sticky="w", padx=(0, ui(10)), pady=ui(2))
 
         f_hw = ttk.Frame(f_sec, style="Params.TFrame")
         f_hw.pack(fill="x", padx=ui(6), pady=ui(6))

@@ -390,7 +390,11 @@ def _extraer_cooldown_led(cfg: dict) -> tuple[int, float]:
     cada_n = int(irradiancia_cfg.get("cada_n_medidas_estructura", 0) or 0)
     if cada_n < 0:
         cada_n = 0
-    tiempo_s = float(irradiancia_cfg.get("tiempo_enfriado_s", 0.0) or 0.0)
+    tiempo_s = float(
+        irradiancia_cfg.get("tiempo_espera_cada_n_s",
+                            irradiancia_cfg.get("tiempo_enfriado_s", 0.0))
+        or 0.0
+    )
     if tiempo_s < 0:
         tiempo_s = 0.0
     return cada_n, tiempo_s
