@@ -16,6 +16,7 @@ CONFIG_LITE_DEFAULT = {
     **deepcopy(BLOQUE_MOTOR),
     **deepcopy(BLOQUE_SIMULADOR_SOLAR),
     **deepcopy(BLOQUE_ESTRUCTURA),
+    "recurso_visa": "AUTO",
     # Parámetros específicos de receta Excel (Submodo E de iv-maker)
     "ruta_excel_receta": "",
     "hoja_excel": "",
