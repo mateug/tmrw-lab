@@ -381,39 +381,80 @@ def construir_eje_estructura(cfg: dict) -> list[dict]:
     ]
 
 
-def generar_plan_estudio(cfg: dict) -> list[dict]:
-    """Genera el plan de medidas multidimensional combinando los ejes activos.
+def _extraer_cooldown_led(cfg: dict) -> tuple[int, float]:
+    """Devuelve la regla de enfriamiento por estructura aplicada dentro de cada combinación LED."""
+    irradiancia_cfg = cfg.get("irradiancia_combinacion", {})
+    if not irradiancia_cfg and cfg.get("irradiancia_modo") == "multiples_combinaciones":
+        irradiancia_cfg = cfg.get("irradiancia_multiples_combinaciones", {})
 
-    La relación entre ejes activos es siempre producto cartesiano 1-N en Studio.
-    Se mantiene compatibilidad con configuraciones antiguas en las que se hubiese
-    especificado "1-1", pero en la práctica se normaliza a "1-N" para evitar
-    comportamiento inesperado en la secuencia de medidas.
+    cada_n = int(irradiancia_cfg.get("cada_n_medidas_estructura", 0) or 0)
+    if cada_n < 0:
+        cada_n = 0
+    tiempo_s = float(irradiancia_cfg.get("tiempo_enfriado_s", 0.0) or 0.0)
+    if tiempo_s < 0:
+        tiempo_s = 0.0
+    return cada_n, tiempo_s
+
+
+def generar_plan_estudio(cfg: dict) -> list[dict]:
+    """Genera el plan de medidas multidimensional combinando ejes activos.
+
+    El orden real del estudio es: motor → LED → estructura(s) → medida. Dentro de cada
+    combinación motor+LED, se recorren las estructuras seleccionadas y se insertan pasos de
+    enfriamiento cuando se alcanza el umbral configurado por combinación.
     """
-    eje_est = construir_eje_estructura(cfg)
     eje_mot = construir_eje_motor(cfg)
     eje_led = construir_eje_leds(cfg)
-
-    # Compatibilidad legacy: si existía una configuración antigua con 1-1,
-    # se ignora y se utiliza siempre el producto cartesiano.
-    _ = cfg.get("relacion_ejes", "1-N")
-    combinaciones = list(itertools.product(eje_est, eje_mot, eje_led))
+    config_estructura = cfg.get("estructura", {})
+    estructuras_seleccionadas = []
+    if cfg.get("eje_estructura_activo", False):
+        estructuras_seleccionadas = [
+            str(est) for est in (config_estructura.get("estructuras") or [])
+        ]
+    if not estructuras_seleccionadas:
+        estructuras_seleccionadas = [None]
 
     plan = []
-    for idx, (est_info, mot_info, led_info) in enumerate(combinaciones, start=1):
-        paso = {
-            "indice": idx,
-            "total_pasos": len(combinaciones),
-            # Estructura
-            "estructura_activa": est_info["estructura_activa"],
-            "estructura": est_info["estructura"],
-            # Motor
-            "motor_activo": mot_info["motor_activo"],
-            "posicion_motor_pasos": mot_info["posicion_pasos"],
-            "posicion_motor_mm": mot_info["posicion_mm"],
-            # LED / Simulador Solar
-            "solar_modo": led_info["solar_modo"],
-            "solar_params": led_info["solar_params"],
-        }
-        plan.append(paso)
+    cd_medidas, cd_tiempo = _extraer_cooldown_led(cfg)
+
+    combo_idx = 0
+    for mot_info in eje_mot:
+        for led_info in eje_led:
+            combo_idx += 1
+            for medida_idx, estructura in enumerate(estructuras_seleccionadas, start=1):
+                keithley_cfg = {}
+                if estructura is not None:
+                    keithley_cfg = config_estructura.get("keithley_por_estructura", {}).get(str(estructura), {})
+
+                plan.append({
+                    "indice": len(plan) + 1,
+                    "total_pasos": None,
+                    "tipo": "medida",
+                    "combo_idx": combo_idx,
+                    "estructura_activa": estructura is not None,
+                    "estructura": estructura,
+                    "motor_activo": mot_info["motor_activo"],
+                    "posicion_motor_pasos": mot_info["posicion_pasos"],
+                    "posicion_motor_mm": mot_info["posicion_mm"],
+                    "solar_modo": led_info["solar_modo"],
+                    "solar_params": led_info["solar_params"],
+                    "keithley": keithley_cfg,
+                    "orden_estructura": medida_idx,
+                })
+
+                if cd_medidas and cd_tiempo and medida_idx % cd_medidas == 0 and medida_idx < len(estructuras_seleccionadas):
+                    plan.append({
+                        "indice": len(plan) + 1,
+                        "total_pasos": None,
+                        "tipo": "enfriar",
+                        "combo_idx": combo_idx,
+                        "estructura": estructura,
+                        "duracion_s": cd_tiempo,
+                        "accion": "apagar_luz",
+                    })
+
+    for idx, paso in enumerate(plan, start=1):
+        paso["total_pasos"] = len(plan)
+        paso["indice"] = idx
 
     return plan

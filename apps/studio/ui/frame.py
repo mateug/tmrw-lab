@@ -24,7 +24,8 @@ from apps.studio.ui.panel_medida import crear_panel_medida_fijo
 from apps.studio.ui.panel_motor import PanelEjesMotor
 from apps.studio.ui.panel_led import PanelEjeIluminacion
 from apps.studio.ui.panel_estructura import PanelEjeEstructura
-from core.instrument.solar_simulator import normalizar_canal_ossila
+from core.instrument.relay_structure import crear_rele_estructura
+from core.instrument.solar_simulator import crear_controlador_simulador_solar, normalizar_canal_ossila
 
 
 class StudioFrame(ttk.Frame):
@@ -165,6 +166,7 @@ class StudioFrame(ttk.Frame):
             "solar_espera_encendido_s": tk.StringVar(value="0.0"),
             "solar_espera_estab_s": tk.StringVar(value="1.0"),
             "solar_tiempo_enfriado_s": tk.StringVar(value="0.0"),
+            "solar_cada_n_medidas_estructura": tk.StringVar(value="0"),
             "solar_apagar_al_final": tk.BooleanVar(value=True),
             # Estructura
             "estructura_disponibles": estructuras_base,
@@ -377,7 +379,11 @@ class StudioFrame(ttk.Frame):
         ]
         cfg["irradiancia_combinacion"]["canales_combinacion"] = v["solar_canales_comb_lista"]
         cfg["irradiancia_combinacion"]["relaciones"] = list(v.get("solar_canales_comb_relaciones", []))
+        cfg["irradiancia_combinacion"]["cada_n_medidas_estructura"] = int(v["solar_cada_n_medidas_estructura"].get() or 0)
+        cfg["irradiancia_combinacion"]["tiempo_enfriado_s"] = float(v["solar_tiempo_enfriado_s"].get() or 0.0)
         cfg["irradiancia_multiples_combinaciones"]["combinaciones"] = self._parsear_recetas_iluminacion()
+        cfg["irradiancia_multiples_combinaciones"]["cada_n_medidas_estructura"] = int(v["solar_cada_n_medidas_estructura"].get() or 0)
+        cfg["irradiancia_multiples_combinaciones"]["tiempo_enfriado_s"] = float(v["solar_tiempo_enfriado_s"].get() or 0.0)
 
         # Estructura
         estructura_seleccionadas = [
@@ -468,18 +474,56 @@ class StudioFrame(ttk.Frame):
             mostrar_error("Error", f"No se pudo liberar el Keithley:\n{exc}")
 
     def _hilo_secuencia(self, cfg, plan):
+        rele = None
+        simulador = None
         try:
+            if cfg.get("eje_estructura_activo", False):
+                rele = crear_rele_estructura(cfg, self.evento_aborto)
+                rele.connect()
+
+            if cfg.get("simulador_solar_activo", False):
+                simulador = crear_controlador_simulador_solar(cfg, self.evento_aborto)
+                if simulador is not None:
+                    simulador.connect()
+
             for idx, paso in enumerate(plan, 1):
                 if self.evento_aborto.is_set():
                     self.cola_ui.put(("log", "\n[⏹] Secuencia abortada por el usuario.\n"))
                     break
-                self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando paso: {paso}\n"))
-                # Simular o ejecutar paso
-                time.sleep(0.1)
+
+                if paso.get("tipo") == "medida":
+                    estructura = paso.get("estructura")
+                    if estructura and rele is not None:
+                        self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Seleccionando estructura: {estructura}\n"))
+                        rele.select(estructura)
+                    self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando medida para {estructura or 'estructura no seleccionada'}\n"))
+                    time.sleep(0.1)
+                elif paso.get("tipo") == "enfriar":
+                    self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Enfriamiento LED: apagando fuente durante {paso.get('duracion_s', 0.0)} s\n"))
+                    if simulador is not None:
+                        try:
+                            simulador.apagar()
+                        except Exception:
+                            pass
+                    time.sleep(float(paso.get("duracion_s", 0.0)))
+                else:
+                    self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando paso: {paso}\n"))
+                    time.sleep(0.1)
+
             self.cola_ui.put(("log", "\n[✓] Secuencia finalizada con éxito.\n"))
         except Exception as exc:
             self.cola_ui.put(("log", f"\n[ERROR] Secuencia interrumpida: {exc}\n"))
         finally:
+            if rele is not None:
+                try:
+                    rele.close()
+                except Exception:
+                    pass
+            if simulador is not None:
+                try:
+                    simulador.close()
+                except Exception:
+                    pass
             self.cola_ui.put(("fin_secuencia", None))
 
     def _set_badge(self, texto, bg, fg):

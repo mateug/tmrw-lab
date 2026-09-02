@@ -95,6 +95,8 @@ class PanelEjeIluminacion(ttk.Frame):
         ttk.Entry(f_t_grid, textvariable=self.vars["solar_espera_estab_s"], width=8).grid(row=0, column=3, sticky="w", padx=ui(4))
         ttk.Label(f_t_grid, text="Tiempo enfriamiento/reposo (s):", style="Params.TLabel").grid(row=0, column=4, sticky="w", padx=(ui(12), ui(4)))
         ttk.Entry(f_t_grid, textvariable=self.vars["solar_tiempo_enfriado_s"], width=8).grid(row=0, column=5, sticky="w", padx=ui(4))
+        ttk.Label(f_t_grid, text="Cada N medidas estructura:", style="Params.TLabel").grid(row=0, column=6, sticky="w", padx=(ui(12), ui(4)))
+        ttk.Entry(f_t_grid, textvariable=self.vars["solar_cada_n_medidas_estructura"], width=8).grid(row=0, column=7, sticky="w", padx=ui(4))
 
         f_exp = ttk.Frame(f_tiempos, style="Params.TFrame")
         f_exp.pack(fill="x", pady=(ui(4), ui(2)))
