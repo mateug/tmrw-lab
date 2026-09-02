@@ -9,8 +9,12 @@ from tkinter import ttk, scrolledtext, filedialog
 from pathlib import Path
 import pandas as pd
 
-from core.instrument.keithley import liberar_control_manual_keithley
+from core.instrument.keithley import (
+    liberar_control_manual_keithley,
+    recuperar_control_automatico_keithley,
+)
 from core.instrument.registry import abortar_instrumento_activo, abortar_motor_activo
+from core.plot.plotter import generar_imagen_tk_curvas_iv_pv
 from core.ui_kit.scaler import ui, ui_font, ui_font_console, UIConfig
 from core.ui_kit.shared import (
     crear_barra_superior,
@@ -67,6 +71,8 @@ class LiteFrame(ttk.Frame):
         self.evento_aborto = threading.Event()
         self.cola_ui = queue.Queue()
         self.ejecutando = False
+        self.modo_automatico = True
+        self._imagenes_log = []
         self._df_receta = None
         self._ejes_detectados = {}
         self._filas_receta = []
@@ -113,10 +119,13 @@ class LiteFrame(ttk.Frame):
 
         body = ttk.Frame(self, style="Window.TFrame")
         body.pack(fill="both", expand=True, padx=ui(6), pady=ui(4))
+        body.columnconfigure(0, weight=2)
+        body.columnconfigure(1, weight=3)
+        body.rowconfigure(0, weight=1)
 
         # Columna Izquierda: Configuración
         col_izq = ttk.Frame(body, style="Window.TFrame")
-        col_izq.pack(side="left", fill="both", expand=True, padx=(0, ui(4)))
+        col_izq.grid(row=0, column=0, sticky="nsew", padx=(0, ui(4)))
 
         # =========================================================================
         # [1] Guardado de Datos (AL PRINCIPIO, igual que en Studio)
@@ -292,9 +301,8 @@ class LiteFrame(ttk.Frame):
         self.btn_manual.pack(side="left", padx=ui(4))
 
         # Columna Derecha: Consola de Progreso
-        col_der = ttk.Frame(body, width=ui(UIConfig.LITE_CONSOLE_WIDTH), style="Window.TFrame")
-        col_der.pack(side="right", fill="both", expand=False, padx=(ui(4), 0))
-        col_der.pack_propagate(False)
+        col_der = ttk.Frame(body, style="Window.TFrame")
+        col_der.grid(row=0, column=1, sticky="nsew", padx=(ui(4), 0))
 
         f_res = crear_seccion_frame(col_der, "Consola de Ejecución", "results")
         f_res.pack(fill="both", expand=True)
@@ -403,10 +411,14 @@ class LiteFrame(ttk.Frame):
             self.btn_iniciar.configure(state="disabled")
 
     def _on_iniciar(self):
-        if self.ejecutando or not self._filas_receta:
+        if not self._comprobar_modo_automatico() or self.ejecutando or not self._filas_receta:
             return
 
         cfg = self._recoger_config()
+        cfg["log_callback"] = lambda mensaje: self.cola_ui.put(("log", str(mensaje)))
+        cfg["grafica_callback"] = lambda datos, grafica_cfg: self.cola_ui.put(
+            ("grafica", (datos, grafica_cfg))
+        )
         self.ejecutando = True
         self.evento_aborto.clear()
         self.btn_iniciar.configure(state="disabled")
@@ -438,11 +450,39 @@ class LiteFrame(ttk.Frame):
         self.txt_log.insert("end", "\n[⏹] Solicitud de aborto enviada...\n")
 
     def _on_modo_manual(self):
+        if self.ejecutando:
+            self.txt_log.insert("end", "\n[AVISO] Espera a que termine la operación actual.\n")
+            return
+        self.ejecutando = True
+        self.btn_manual.configure(state="disabled")
+        recurso = self.vars["recurso_visa"].get().strip()
+        recuperar = not self.modo_automatico
+        accion = "Recuperando control automático" if recuperar else "Liberando Keithley para control manual"
+        self.txt_log.insert("end", f"\n>>> {accion}...\n")
+        threading.Thread(
+            target=self._hilo_cambiar_modo,
+            args=(recurso, recuperar),
+            daemon=True,
+        ).start()
+
+    def _hilo_cambiar_modo(self, recurso, recuperar):
         try:
-            liberar_control_manual_keithley(self.vars["recurso_visa"].get().strip())
-            mostrar_info("Modo Manual", "Keithley 2450 liberado para control manual local.")
+            if recuperar:
+                recuperar_control_automatico_keithley(recurso)
+            else:
+                liberar_control_manual_keithley(recurso)
+            self.cola_ui.put(("modo_manual", "automatico" if recuperar else "manual"))
         except Exception as exc:
-            mostrar_error("Error", f"No se pudo liberar el Keithley:\n{exc}")
+            self.cola_ui.put(("error_modo_manual", str(exc)))
+
+    def _comprobar_modo_automatico(self):
+        if self.modo_automatico:
+            return True
+        mensaje = "No se puede ejecutar la receta mientras el Keithley está en modo manual. Recupera primero el modo automático."
+        self.txt_log.insert("end", f"\n[AVISO] {mensaje}\n")
+        self.txt_log.see("end")
+        mostrar_info("Modo manual", mensaje)
+        return False
 
     def _procesar_cola_ui(self):
         while not self.cola_ui.empty():
@@ -450,9 +490,48 @@ class LiteFrame(ttk.Frame):
             if tipo == "log":
                 self.txt_log.insert("end", str(dato))
                 self.txt_log.see("end")
+            elif tipo == "grafica":
+                self._mostrar_grafica(*dato)
             elif tipo == "fin":
                 self.ejecutando = False
                 self.btn_iniciar.configure(state="normal")
                 self.btn_abortar.configure(state="disabled")
+            elif tipo == "modo_manual":
+                self.ejecutando = False
+                self.modo_automatico = dato == "automatico"
+                self.btn_manual.configure(
+                    state="normal",
+                    text=(
+                        "⚙ Liberar Keithley"
+                        if self.modo_automatico
+                        else "↩ Modo automático"
+                    ),
+                )
+                self.txt_log.insert(
+                    "end",
+                    "[OK] Control automático recuperado.\n"
+                    if self.modo_automatico
+                    else "[OK] Keithley liberado para control manual.\n",
+                )
+                self.txt_log.see("end")
+            elif tipo == "error_modo_manual":
+                self.ejecutando = False
+                self.btn_manual.configure(state="normal")
+                self.txt_log.insert("end", f"[ERROR] No se pudo cambiar el modo del Keithley: {dato}\n")
+                self.txt_log.see("end")
+                mostrar_error("Error de control", f"No se pudo cambiar el modo del Keithley:\n{dato}")
 
         self.after(100, self._procesar_cola_ui)
+
+    def _mostrar_grafica(self, datos, cfg):
+        try:
+            imagen = generar_imagen_tk_curvas_iv_pv(datos, cfg)
+            if imagen is None:
+                return
+            self._imagenes_log.append(imagen)
+            self.txt_log.insert("end", "\n")
+            self.txt_log.image_create("end", image=imagen)
+            self.txt_log.insert("end", "\n")
+            self.txt_log.see("end")
+        except Exception as exc:
+            self.txt_log.insert("end", f"[AVISO] No se pudo mostrar la curva: {exc}\n")

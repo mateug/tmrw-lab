@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from apps.studio.ui.frame import StudioFrame
+from apps.lite.ui.panel import LiteFrame
 from core.instrument.keithley import (
     liberar_control_manual_keithley,
     recuperar_control_automatico_keithley,
@@ -22,6 +23,17 @@ class FakeInstrument:
 
     def close(self):
         self.closed = True
+
+
+class FakeText:
+    def __init__(self):
+        self.messages = []
+
+    def insert(self, _position, message):
+        self.messages.append(message)
+
+    def see(self, _position):
+        pass
 
 
 class StudioMeasureTests(unittest.TestCase):
@@ -95,6 +107,16 @@ class StudioMeasureTests(unittest.TestCase):
         conectar.assert_called_once_with("AUTO", timeout_ms=5000)
         go_remote.assert_called_once_with(instrumento)
         self.assertTrue(instrumento.closed)
+
+    @patch("apps.lite.ui.panel.mostrar_info")
+    def test_lite_avisa_si_se_intenta_ejecutar_en_manual(self, mostrar_info_mock):
+        frame = LiteFrame.__new__(LiteFrame)
+        frame.modo_automatico = False
+        frame.txt_log = FakeText()
+
+        self.assertFalse(frame._comprobar_modo_automatico())
+        self.assertIn("modo manual", frame.txt_log.messages[0].lower())
+        mostrar_info_mock.assert_called_once()
 
 
 if __name__ == "__main__":
