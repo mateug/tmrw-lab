@@ -100,10 +100,9 @@ def calcular_mpp_y_ff(df_directa, Voc, Isc, invertir_eje_y=False):
     V_ok = V[mascara]
     I_ok = I[mascara]
 
-    if invertir_eje_y:
-        idx = int(np.nanargmax(P_ok))
-    else:
-        idx = int(np.nanargmin(P_ok))
+    # El sentido/signo usado para dibujar la curva no debe decidir el MPP.
+    # El punto de máxima potencia fotovoltaica es el de mayor |V*I|.
+    idx = int(np.nanargmax(np.abs(P_ok)))
 
     Pmax = float(abs(P_ok[idx]))
     V_Pmax = float(V_ok[idx])

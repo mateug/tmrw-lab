@@ -10,9 +10,8 @@ MANIFEST = {
     "id": "lite",
     "nombre": "Lite",
     "descripcion": (
-        "Carga combinaciones desde Excel.\n"
-        "Vista previa antes de medir.\n"
-        "Ejecución desatendida de la lista."
+        "Carga las combinaciones desde un Excel.\n\n"
+        "Vista previa antes de medir.\n\n"
     ),
     "icono": "📋",
     "icono_archivo": "lite",

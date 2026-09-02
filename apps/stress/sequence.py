@@ -27,9 +27,6 @@ Clock = Callable[[], float]
 
 def run_comparison_cycle(cfg: dict, ciclo: int = 1, guardar_archivos: bool = True) -> dict:
     """Ejecuta un ciclo comparativo A -> B con conmutación física por relé."""
-    if "t0_experimento" not in cfg or cfg["t0_experimento"] is None:
-        cfg["t0_experimento"] = time.perf_counter()
-
     escribir_log(cfg, "\n################################################################")
     escribir_log(cfg, f"                 INICIO CICLO COMPARATIVO {ciclo:03d}")
     escribir_log(cfg, "################################################################")
@@ -86,6 +83,17 @@ def _voc_by_device(cycle_result: dict[str, Any]) -> dict[str, float]:
         summary = measurement.get("resumen", {})
         device = str(summary.get("Estructura", summary.get("Dispositivo", "")))
         voc = summary.get("Voc (V)")
+        if voc is None:
+            for key, raw in summary.items():
+                if str(key).startswith("Voc (") and str(key).endswith(")"):
+                    unit = str(key)[5:-1]
+                    factor = {"V": 1.0, "mV": 1e-3, "uV": 1e-6}.get(unit)
+                    if factor is not None:
+                        try:
+                            voc = float(raw) * factor
+                        except (TypeError, ValueError):
+                            voc = None
+                    break
         if device in {"A", "B"} and voc is not None:
             try:
                 value = float(voc)
@@ -132,9 +140,10 @@ def run_degradation_sequence(
     mode = str(programming.get("modo", "por_tiempo")).strip().lower()
     event = cfg.get("evento_aborto")
 
-    if "t0_experimento" not in cfg or cfg["t0_experimento"] is None:
-        cfg["t0_experimento"] = time.perf_counter()
-    started_at = clock()
+    started_at = cfg.get("t0_experimento")
+    if started_at is None:
+        started_at = clock()
+        cfg["t0_experimento"] = started_at
 
     max_duration_s = None
     if mode == "por_tiempo":

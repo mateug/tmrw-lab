@@ -19,14 +19,14 @@ class UIConfig:
     # --- Tamaños Base de Fuente (en Puntos) ---
     SIZE_TITLE_MAIN = 14          # Título principal de bienvenida
     SIZE_SUBTITLE = 8.5           # Subtítulo principal de bienvenida
-    SIZE_CARD_TITLE = 9.5         # Título en cabecera de tarjetas de modo
-    SIZE_SECTION_HEADER = 7.0     # Títulos de secciones dentro de los cuadros LabelFrame
+    SIZE_CARD_TITLE = 10         # Título en cabecera de tarjetas de modo
+    SIZE_SECTION_HEADER = 10     # Títulos de secciones dentro de los cuadros LabelFrame
     SIZE_LABEL = 4.5              # Texto de etiquetas estándar, casillas y botones de radio
     SIZE_ENTRY = 4.5              # Texto editable dentro de las celdas de entrada (Entry, Combobox)
     SIZE_COMBOBOX_LIST = 4.5      # Texto de las opciones desplegables del menú (listbox de Combobox)
     SIZE_BUTTON = 4.5             # Texto dentro de los botones de acción
     SIZE_CONSOLE = 4.5            # Texto impreso dentro de la consola / resultados
-    SIZE_INFO_ITALIC = 4.5        # Textos informativos secundarios o en cursiva explicativa
+    SIZE_INFO_ITALIC = 4.5     # Textos informativos secundarios o en cursiva explicativa
 
     # --- Dimensiones de Widgets (en Píxeles) ---
     ENTRY_HEIGHT = 22             # Altura total de las celdas de texto editables (Entry)
@@ -37,6 +37,7 @@ class UIConfig:
     BUTTON_MIN_WIDTH = 60         # Ancho mínimo de los botones de acción
     SCROLLBAR_WIDTH = 16          # Ancho de las barras de desplazamiento
     CONSOLE_HEIGHT = 13           # Filas base de la consola de salida
+    LITE_CONSOLE_WIDTH = 520      # Ancho base de la consola de Lite
 
     # --- Márgenes Internos y Paddings Base (en Píxeles) ---
     PADDING_MAIN_CONTAINER = 30   # Padding alrededor del contenedor principal de bienvenida
@@ -68,8 +69,8 @@ class UIConfig:
 class Scaler:
     """Gestor central de escalado responsive de la interfaz de usuario."""
 
-    BASE_W = 1280    # Ancho de pantalla de referencia
-    BASE_H = 800     # Alto de pantalla de referencia
+    BASE_W = 1600    # Ancho de pantalla de referencia
+    BASE_H = 1000    # Alto de pantalla de referencia
     MIN_SCALE = 0.70 # Límite inferior de escala
     MAX_SCALE = 2.50 # Límite superior de escala
 

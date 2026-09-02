@@ -197,9 +197,9 @@ class WelcomeFrame(ttk.Frame):
             text=manifest.get("descripcion", ""),
             bg=bg,
             fg=t.get("fg_muted", "#475569"),
-            font=ui_font("Segoe UI", 5.8),
-            wraplength=ui(220),
-            justify="center",
+            font=ui_font("Segoe UI", 9),
+            wraplength=ui(250),
+            justify="left",
             cursor="hand2",
         ).pack(padx=ui(14), pady=(0, ui(16)), fill="both", expand=True)
 

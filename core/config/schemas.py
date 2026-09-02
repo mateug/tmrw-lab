@@ -113,6 +113,9 @@ BLOQUE_SIMULADOR_SOLAR = {
         ],
         "espera_estabilizacion_s": 3.0,
         "espera_encendido_medida_s": 3.0,
+        "cada_n_medidas_estructura": 0,
+        "tiempo_enfriado_s": 0.0,
+        "tiempo_espera_cada_n_s": 0.0,
         "apagar_al_final": True,
     },
     "irradiancia_multiples_combinaciones": {
@@ -120,6 +123,9 @@ BLOQUE_SIMULADOR_SOLAR = {
         "combinaciones": [],
         "espera_estabilizacion_s": 3.0,
         "espera_encendido_medida_s": 3.0,
+        "cada_n_medidas_estructura": 0,
+        "tiempo_enfriado_s": 0.0,
+        "tiempo_espera_cada_n_s": 0.0,
         "apagar_al_final": True,
     },
 }
@@ -153,8 +159,8 @@ BLOQUE_UI = {
 BLOQUE_ESTRUCTURA = {
     "eje_estructura_activo": False,
     "estructura": {
-        "puerto_serie": "COM5",
-        "baudrate": 9600,
+        "puerto_serie": "COM4",
+        "baudrate": 115200,
         "estructuras": ["A", "B"],
         "espera_estabilizacion_s": 0.5,
     },

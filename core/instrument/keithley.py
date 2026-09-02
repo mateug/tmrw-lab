@@ -36,15 +36,57 @@ def conectar_y_verificar(recurso_visa: str, timeout_ms: int = 20000):
     - No se puede abrir el recurso.
     - La respuesta a *IDN? no contiene '2450'.
     """
+    recurso = str(recurso_visa or "AUTO").strip()
+    rm = pyvisa.ResourceManager()
+
+    if recurso.upper() == "AUTO":
+        candidatos = rm.list_resources()
+        errores = []
+        for candidato in candidatos:
+            inst = None
+            try:
+                inst = rm.open_resource(candidato, open_timeout=2500)
+                inst.timeout = timeout_ms
+                inst.write_termination = "\n"
+                inst.read_termination = "\n"
+                idn = inst.query("*IDN?").strip()
+                if MODELO_ESPERADO in idn:
+                    return inst
+                inst.close()
+            except Exception as exc:
+                errores.append(f"{candidato}: {exc}")
+                if inst is not None:
+                    try:
+                        inst.close()
+                    except Exception:
+                        pass
+
+        detalle = ", ".join(candidatos) if candidatos else "ninguno"
+        if errores:
+            detalle += f" (errores: {'; '.join(errores)})"
+        try:
+            rm.close()
+        except Exception:
+            pass
+        raise ErrorSMU(
+            "No se encontró un Keithley 2450 por VISA. "
+            f"Recursos detectados: {detalle}. "
+            "Comprueba NI-VISA/ Keysight VISA, el cableado y que el instrumento esté encendido."
+        )
+
     try:
-        rm = pyvisa.ResourceManager()
-        inst = rm.open_resource(recurso_visa)
+        inst = rm.open_resource(recurso)
         inst.timeout = timeout_ms
         inst.write_termination = "\n"
         inst.read_termination = "\n"
     except Exception as exc:
+        try:
+            rm.close()
+        except Exception:
+            pass
         raise ErrorSMU(
-            f"No se pudo conectar al recurso VISA '{recurso_visa}': {exc}\n"
+            f"No se pudo conectar al recurso VISA '{recurso}': {exc}\n"
+            "Comprueba que la dirección coincide con la mostrada por NI MAX o rm.list_resources(). "
             "Este modo requiere: Keithley 2450."
         ) from exc
 
@@ -56,7 +98,7 @@ def conectar_y_verificar(recurso_visa: str, timeout_ms: int = 20000):
         except Exception:
             pass
         raise ErrorSMU(
-            f"El instrumento en '{recurso_visa}' no responde a *IDN?.\n"
+            f"El instrumento en '{recurso}' no responde a *IDN?.\n"
             f"Este modo requiere: Keithley 2450. Error: {exc}"
         ) from exc
 
@@ -69,7 +111,7 @@ def conectar_y_verificar(recurso_visa: str, timeout_ms: int = 20000):
             f"El instrumento detectado no es un Keithley 2450.\n"
             f"  Esperado: modelo que contenga '{MODELO_ESPERADO}'\n"
             f"  Encontrado: {idn!r}\n"
-            f"  Recurso: '{recurso_visa}'\n"
+            f"  Recurso: '{recurso}'\n"
             "Comprueba que el Keithley 2450 está encendido y conectado."
         )
 
@@ -322,15 +364,39 @@ def enviar_go_to_local_visa(inst):
     return False
 
 
+def enviar_go_to_remote_visa(inst):
+    """Devuelve el control remoto VISA al programa de medida."""
+    modos = []
+    try:
+        modos.append(pyvisa.constants.RENLineOperation.go_to_remote)
+    except Exception:
+        pass
+
+    for nombre_constante in (
+        "VI_GPIB_REN_ASSERT_ADDRESS",
+        "VI_GPIB_REN_ASSERT_REMOTE",
+    ):
+        try:
+            modos.append(getattr(pyvisa.constants, nombre_constante))
+        except Exception:
+            pass
+
+    modos.extend([1, 3, 4])
+
+    for modo in modos:
+        try:
+            inst.control_ren(modo)
+            return True
+        except Exception:
+            pass
+    return False
+
+
 def liberar_control_manual_keithley(recurso_visa: str, timeout_ms: int = 5000):
     """Libera el Keithley 2450 permitiendo la operación manual en su pantalla táctil."""
-    if not recurso_visa:
-        return
-    rm = None
     inst = None
     try:
-        rm = pyvisa.ResourceManager()
-        inst = rm.open_resource(recurso_visa)
+        inst = conectar_y_verificar(recurso_visa or "AUTO", timeout_ms=timeout_ms)
         inst.timeout = int(timeout_ms)
         inst.write_termination = "\n"
         inst.read_termination = "\n"
@@ -361,9 +427,22 @@ def liberar_control_manual_keithley(recurso_visa: str, timeout_ms: int = 5000):
                 inst.close()
             except Exception:
                 pass
-        if rm is not None:
+
+
+def recuperar_control_automatico_keithley(recurso_visa: str, timeout_ms: int = 5000):
+    """Recupera el control remoto VISA después del modo manual."""
+    inst = None
+    try:
+        inst = conectar_y_verificar(recurso_visa or "AUTO", timeout_ms=timeout_ms)
+        inst.timeout = int(timeout_ms)
+        inst.write_termination = "\n"
+        inst.read_termination = "\n"
+        if not enviar_go_to_remote_visa(inst):
+            raise ErrorSMU("No se pudo recuperar el control remoto del Keithley 2450.")
+    finally:
+        if inst is not None:
             try:
-                rm.close()
+                inst.close()
             except Exception:
                 pass
 

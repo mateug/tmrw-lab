@@ -5,11 +5,283 @@ import pandas as pd
 from core.utils import preparar_carpeta_medida, sanitizar_nombre_archivo
 
 
+# ---------------------------------------------------------------------------
+# Normalización de unidades adaptativas en resúmenes combinados
+# ---------------------------------------------------------------------------
+
+_FACTORES_UNIDADES = {
+    "pA": 1e-12,
+    "nA": 1e-9,
+    "uA": 1e-6,
+    "mA": 1e-3,
+    "A": 1.0,
+    "uV": 1e-6,
+    "mV": 1e-3,
+    "V": 1.0,
+    "kV": 1e3,
+    "pW": 1e-12,
+    "nW": 1e-9,
+    "uW": 1e-6,
+    "mW": 1e-3,
+    "W": 1.0,
+    "uA/cm^2": 1e-6,
+    "mA/cm^2": 1e-3,
+    "A/cm^2": 1.0,
+    "uW/cm^2": 1e-6,
+    "mW/cm^2": 1e-3,
+    "W/cm^2": 1.0,
+    "nm^2": 1e-6,
+    "um^2": 1.0,
+    "mm^2": 1e6,
+    "%": 1.0,
+}
+
+
+def _extraer_unidad(clave, prefijo):
+    """Extrae la unidad de una columna con formato 'prefijo (unidad)'."""
+    texto = str(clave)
+    marcador = f"{prefijo} ("
+    if not texto.startswith(marcador) or not texto.endswith(")"):
+        return None
+    return texto[len(marcador):-1]
+
+
+def _valor_numerico_valido(valor):
+    try:
+        return np.isfinite(float(valor))
+    except (TypeError, ValueError):
+        return False
+
+
+def _extraer_magnitud_unidad(clave, prefijos):
+    """Devuelve (magnitud, unidad) si la columna representa una magnitud conocida."""
+    texto = str(clave)
+
+    for prefijo in prefijos:
+        marcador = f"{prefijo} ("
+        if texto.startswith(marcador) and texto.endswith(")"):
+            unidad = texto[len(marcador):-1]
+            if unidad in _FACTORES_UNIDADES:
+                return prefijo, unidad
+
+    return None, None
+
+
+def _unidad_adaptativa_valor(valor_base, grupo):
+    """Elige una unidad legible a partir de un valor expresado en unidades base."""
+    if not _valor_numerico_valido(valor_base):
+        return None
+
+    valor = abs(float(valor_base))
+
+    if grupo in {"corriente", "limite_corriente"}:
+        opciones = [
+            (1.0, "A"),
+            (1e3, "mA"),
+            (1e6, "uA"),
+            (1e9, "nA"),
+            (1e12, "pA"),
+        ]
+
+    elif grupo == "tension":
+        opciones = [
+            (1.0, "V"),
+            (1e3, "mV"),
+            (1e6, "uV"),
+        ]
+
+    elif grupo == "potencia":
+        opciones = [
+            (1.0, "W"),
+            (1e3, "mW"),
+            (1e6, "uW"),
+            (1e9, "nW"),
+            (1e12, "pW"),
+        ]
+
+    elif grupo == "densidad_corriente":
+        opciones = [
+            (1.0, "A/cm^2"),
+            (1e3, "mA/cm^2"),
+            (1e6, "uA/cm^2"),
+        ]
+
+    elif grupo == "densidad_potencia":
+        opciones = [
+            (1.0, "W/cm^2"),
+            (1e3, "mW/cm^2"),
+            (1e6, "uW/cm^2"),
+        ]
+
+    elif grupo == "superficie":
+        opciones = [
+            (1.0, "um^2"),
+            (1e-6, "mm^2"),
+            (1e6, "nm^2"),
+        ]
+
+    elif grupo == "porcentaje":
+        return "%"
+
+    else:
+        return None
+
+    for factor, unidad in opciones:
+        if valor * factor >= 1.0:
+            return unidad
+
+    return opciones[-1][1]
+
+
+def normalizar_unidades_filas_resumen(filas_resumen):
+    """
+    Normaliza un resumen completo sin perder valores cuando cambian las unidades.
+
+    Acepta:
+      - columnas en unidades base, por ejemplo ``Voc (V)``
+      - columnas ya adaptativas, por ejemplo ``Voc (mV)``
+
+    Primero convierte todas las magnitudes a unidades base.
+    Después elige UNA única escala de salida para TODO el histórico.
+    """
+
+    if not filas_resumen:
+        return []
+
+    grupos = {
+        "corriente": ["Isc", "Imp"],
+        "limite_corriente": ["Imax"],
+        "tension": ["Voc", "Vmp"],
+        "potencia": ["Pmax"],
+        "densidad_corriente": ["Jsc"],
+        "densidad_potencia": ["Irradiancia", "Densidad de potencia"],
+        "superficie": ["Superficie activa"],
+        "porcentaje": ["FF", "Eff"],
+    }
+
+    grupo_por_magnitud = {
+        magnitud: grupo
+        for grupo, prefijos in grupos.items()
+        for magnitud in prefijos
+    }
+
+    todos_prefijos = list(grupo_por_magnitud.keys())
+
+    # ------------------------------------------------------------------
+    # 1. Convertir todo el histórico a unidades base.
+    # ------------------------------------------------------------------
+    filas_base = []
+    maximos = {grupo: 0.0 for grupo in grupos}
+
+    for fila in filas_resumen:
+        nueva = {}
+        magnitudes_encontradas = set()
+
+        for clave, valor in fila.items():
+            magnitud, unidad = _extraer_magnitud_unidad(
+                clave,
+                todos_prefijos,
+            )
+
+            if magnitud is None:
+                nueva[clave] = valor
+                continue
+
+            if not _valor_numerico_valido(valor):
+                continue
+
+            # Si la misma magnitud aparece varias veces con unidades distintas,
+            # conservar únicamente la primera válida.
+            if magnitud in magnitudes_encontradas:
+                continue
+
+            magnitudes_encontradas.add(magnitud)
+
+            grupo = grupo_por_magnitud[magnitud]
+
+            valor_base = float(valor) * _FACTORES_UNIDADES[unidad]
+
+            nueva[f"__base__{magnitud}"] = valor_base
+
+            maximos[grupo] = max(
+                maximos[grupo],
+                abs(valor_base),
+            )
+
+        filas_base.append(nueva)
+
+    # ------------------------------------------------------------------
+    # 2. Elegir una única unidad para todo el histórico.
+    # ------------------------------------------------------------------
+    unidades_destino = {}
+
+    for grupo, maximo in maximos.items():
+        if grupo == "porcentaje":
+            unidades_destino[grupo] = "%"
+
+        elif maximo > 0:
+            unidades_destino[grupo] = _unidad_adaptativa_valor(
+                maximo,
+                grupo,
+            )
+
+        else:
+            unidades_destino[grupo] = {
+                "corriente": "uA",
+                "limite_corriente": "uA",
+                "tension": "mV",
+                "potencia": "uW",
+                "densidad_corriente": "mA/cm^2",
+                "densidad_potencia": "mW/cm^2",
+                "superficie": "um^2",
+                "porcentaje": "%",
+            }[grupo]
+
+    # ------------------------------------------------------------------
+    # 3. Reconstruir las filas con nombres de columnas estables.
+    # ------------------------------------------------------------------
+    resultado = []
+
+    for fila_base in filas_base:
+        fila = {
+            clave: valor
+            for clave, valor in fila_base.items()
+            if not str(clave).startswith("__base__")
+        }
+
+        for magnitud, grupo in grupo_por_magnitud.items():
+            clave_base = f"__base__{magnitud}"
+
+            if clave_base not in fila_base:
+                continue
+
+            unidad = unidades_destino[grupo]
+            valor_base = fila_base[clave_base]
+
+            valor_salida = (
+                valor_base /
+                _FACTORES_UNIDADES[unidad]
+            )
+
+            fila[f"{magnitud} ({unidad})"] = valor_salida
+
+        resultado.append(fila)
+
+    return resultado
+
+
 def construir_rutas_salida(cfg):
-    carpeta = Path(cfg.get("carpeta_salida_medida") or preparar_carpeta_medida(cfg))
-    nombre = sanitizar_nombre_archivo(cfg["nombre_medida"])
+    carpeta = Path(
+        cfg.get("carpeta_salida_medida")
+        or preparar_carpeta_medida(cfg)
+    )
+
+    nombre = sanitizar_nombre_archivo(
+        cfg["nombre_medida"]
+    )
 
     ruta_excel = carpeta / f"{nombre}.xlsx"
+
     rutas_figuras = {
         "lineal": carpeta / f"{nombre}_lineal.png",
         "log_y": carpeta / f"{nombre}_log_y.png",
@@ -20,6 +292,7 @@ def construir_rutas_salida(cfg):
 
 def eliminar_archivo_previo(ruta):
     ruta = Path(ruta)
+
     if not ruta.exists():
         return
 
@@ -27,20 +300,20 @@ def eliminar_archivo_previo(ruta):
         ruta.unlink()
     except PermissionError as exc:
         raise PermissionError(
-            f"No se pudo sobrescribir el archivo porque está abierto o bloqueado:\n{ruta}\n\n"
-            "Cierra Excel, el visor de imágenes o cualquier programa que lo esté usando "
-            "y vuelve a lanzar la medida."
+            f"No se pudo sobrescribir el archivo porque está abierto o bloqueado:\n"
+            f"{ruta}\n\n"
+            "Cierra Excel, el visor de imágenes o cualquier programa que lo esté "
+            "usando y vuelve a lanzar la medida."
         ) from exc
 
 
 def preparar_datos_excel(df):
-    df_excel = pd.DataFrame({
+    return pd.DataFrame({
         "t (seg)": df["tiempo_relativo_s"],
         "V (V)": df["voltaje_V"],
         "I (A)": df["corriente_medida_A"],
         "P (W)": df["potencia_W"],
     })
-    return df_excel
 
 
 def guardar_resumen_repetitividad_excel(cfg_base, filas_resumen):
@@ -48,13 +321,33 @@ def guardar_resumen_repetitividad_excel(cfg_base, filas_resumen):
         return None
 
     ruta_base, _ = construir_rutas_salida(cfg_base)
-    ruta = ruta_base.with_name(f"{ruta_base.stem}_medidas_repetitivas.xlsx")
-    ruta.parent.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame(filas_resumen)
+    ruta = ruta_base.with_name(
+        f"{ruta_base.stem}_medidas_repetitivas.xlsx"
+    )
+
+    ruta.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    df = pd.DataFrame(
+        normalizar_unidades_filas_resumen(
+            filas_resumen
+        )
+    )
+
     eliminar_archivo_previo(ruta)
-    with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name="resumen_repetitividad", index=False)
+
+    with pd.ExcelWriter(
+        ruta,
+        engine="openpyxl",
+    ) as writer:
+        df.to_excel(
+            writer,
+            sheet_name="resumen_repetitividad",
+            index=False,
+        )
 
     return str(ruta.resolve())
 
@@ -64,13 +357,33 @@ def guardar_resumen_barrido_motor_excel(cfg_base, filas_resumen):
         return None
 
     ruta_base, _ = construir_rutas_salida(cfg_base)
-    ruta = ruta_base.with_name(f"{ruta_base.stem}_barrido_motor.xlsx")
-    ruta.parent.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame(filas_resumen)
+    ruta = ruta_base.with_name(
+        f"{ruta_base.stem}_barrido_motor.xlsx"
+    )
+
+    ruta.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    df = pd.DataFrame(
+        normalizar_unidades_filas_resumen(
+            filas_resumen
+        )
+    )
+
     eliminar_archivo_previo(ruta)
-    with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name="resumen_barrido_motor", index=False)
+
+    with pd.ExcelWriter(
+        ruta,
+        engine="openpyxl",
+    ) as writer:
+        df.to_excel(
+            writer,
+            sheet_name="resumen_barrido_motor",
+            index=False,
+        )
 
     return str(ruta.resolve())
 
@@ -80,188 +393,254 @@ def guardar_resumen_irradiancia_excel(cfg_base, filas_resumen):
         return None
 
     ruta_base, _ = construir_rutas_salida(cfg_base)
-    submodo = cfg_base.get("irradiancia_modo", "potencia")
+
+    submodo = cfg_base.get(
+        "irradiancia_modo",
+        "potencia",
+    )
+
     if submodo == "potencia":
         sufijo = "resumen_potencias_sol"
-    elif submodo in {"combinacion", "combinación", "multi_longitud_onda"}:
+
+    elif submodo in {
+        "combinacion",
+        "combinación",
+        "multi_longitud_onda",
+    }:
         sufijo = "resumen_combinacion_longitudes_onda"
-    elif submodo in {"multiples_combinaciones", "multiples_multi_canal"}:
+
+    elif submodo in {
+        "multiples_combinaciones",
+        "multiples_multi_canal",
+    }:
         sufijo = "resumen_multiples_combinaciones"
+
     elif submodo == "lectura_excel":
         sufijo = "resumen_lectura_excel"
+
     else:
         sufijo = "resumen_longitudes_onda"
-    ruta = ruta_base.with_name(f"{ruta_base.stem}_{sufijo}.xlsx")
-    ruta.parent.mkdir(parents=True, exist_ok=True)
 
-    df = pd.DataFrame(filas_resumen)
+    ruta = ruta_base.with_name(
+        f"{ruta_base.stem}_{sufijo}.xlsx"
+    )
+
+    ruta.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    df = pd.DataFrame(
+        normalizar_unidades_filas_resumen(
+            filas_resumen
+        )
+    )
+
     eliminar_archivo_previo(ruta)
-    with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name=sufijo, index=False)
+
+    with pd.ExcelWriter(
+        ruta,
+        engine="openpyxl",
+    ) as writer:
+        df.to_excel(
+            writer,
+            sheet_name=sufijo,
+            index=False,
+        )
 
     return str(ruta.resolve())
 
 
-def leer_combinaciones_excel(ruta, hoja=None, valores_en_tanto_por_uno=True):
+def leer_combinaciones_excel(
+    ruta,
+    hoja=None,
+    valores_en_tanto_por_uno=True,
+):
     """
-    Lee un excel de entrada con una fila de cabecera (nombres de canal/longitud de
-    onda) y una fila por combinación de intensidades a medir.
-
-    Acepta nombres de canal como "Cool White" y "Warm White" sin distinguir
-    mayúsculas/minúsculas.
-
-    Devuelve una tupla (df_original, canales, filas_combinaciones):
-      - df_original: DataFrame tal cual se ha leí­do (columnas ya con espacios
-        limpiados), usado luego para reconstruir el excel de salida.
-      - canales: lista de nombres de columna/canal detectados.
-      - filas_combinaciones: lista de dicts {canal: intensidad_pct} en el mismo
-        orden que las filas del excel, con NaN filtrados.
+    Lee un Excel de entrada con una fila de cabecera
+    y una fila por combinación de intensidades.
     """
+
     ruta = Path(ruta)
-    if not ruta.exists():
-        raise FileNotFoundError(f"No se encuentra el archivo Excel de combinaciones:\n{ruta}")
 
-    if hoja:
-        df_original = pd.read_excel(ruta, sheet_name=hoja, engine="openpyxl")
+    if hoja is None:
+        df = pd.read_excel(ruta)
+
     else:
-        df_original = pd.read_excel(ruta, sheet_name=0, engine="openpyxl")
+        df = pd.read_excel(
+            ruta,
+            sheet_name=hoja,
+        )
 
-    # Limpiamos nombres de columna.
-    df_original.columns = [str(c).strip() for c in df_original.columns]
+    if df.empty:
+        return []
 
-    # Descartamos columnas "Unnamed" completamente vací­as.
-    df_original = df_original.dropna(axis=1, how="all")
-    df_original = df_original.loc[:, ~df_original.columns.str.startswith("Unnamed")]
+    columnas = [
+        str(columna).strip()
+        for columna in df.columns
+    ]
 
-    if df_original.empty or len(df_original.columns) == 0:
-        raise ValueError("El Excel de combinaciones no contiene columnas/canales validos.")
+    df.columns = columnas
 
-    # Normalización de nombres de canal:
-    # permite Cool White / cool white / COOL WHITE / etc.
-    mapa_canales = {}
+    combinaciones = []
 
-    for canal in df_original.columns:
-        canal_limpio = str(canal).strip()
-        canal_normalizado = canal_limpio.casefold()
-
-        if canal_normalizado == "cool white":
-            mapa_canales[canal] = "Cool White"
-        elif canal_normalizado == "warm white":
-            mapa_canales[canal] = "Warm White"
-        else:
-            mapa_canales[canal] = canal_limpio
-
-    canales = list(mapa_canales.values())
-
-    filas_combinaciones = []
-
-    for _, fila in df_original.iterrows():
+    for _, fila in df.iterrows():
         combinacion = {}
 
-        for canal_original in df_original.columns:
-            valor = fila[canal_original]
+        for columna in columnas:
+            valor = fila[columna]
 
             if pd.isna(valor):
                 continue
 
-            valor_pct = (
-                float(valor) * 100.0
-                if valores_en_tanto_por_uno
-                else float(valor)
-            )
+            valor = float(valor)
 
-            canal = mapa_canales[canal_original]
-            combinacion[canal] = valor_pct
+            if valores_en_tanto_por_uno:
+                valor = max(
+                    0.0,
+                    min(1.0, valor),
+                )
 
-        if combinacion:
-            filas_combinaciones.append(combinacion)
+            combinacion[columna] = valor
 
-    if not filas_combinaciones:
-        raise ValueError(
-            "No se ha encontrado ninguna combinacion (fila) valida en el Excel."
-        )
+        combinaciones.append(combinacion)
 
-    return df_original, canales, filas_combinaciones
+    return combinaciones
 
-def guardar_excel_combinaciones_resultados(ruta_salida, df_original, filas_resultado):
-    """
-    Crea una copia del excel de combinaciones de entrada anadiendo, a la derecha
-    de las columnas originales, las columnas de resultados (Voc, Isc, Vmp, Imp,
-    Pmax, FF, Eff, Estado, Archivo Excel, ...) de cada fila/combinacion medida.
-    """
-    if not filas_resultado:
-        return None
 
-    ruta_salida = Path(ruta_salida)
-    ruta_salida.parent.mkdir(parents=True, exist_ok=True)
-
-    df_resultados = pd.DataFrame(filas_resultado).reset_index(drop=True)
-    # Estas columnas ya estan implicitas en las columnas originales del excel de
-    # entrada (una por canal, con el mismo nombre + " (%)") o no aportan valor
-    # en la vista combinada, asi que no se duplican en el excel de salida.
-    columnas_a_excluir = {"Punto", "Combinacion", "Punto en combinacion"}
-    columnas_a_excluir |= {f"{c} (%)" for c in df_original.columns}
-    df_resultados = df_resultados.drop(columns=[c for c in columnas_a_excluir if c in df_resultados.columns])
-
-    df_original_reset = df_original.reset_index(drop=True)
-    n = min(len(df_original_reset), len(df_resultados))
-    df_final = pd.concat(
-        [df_original_reset.iloc[:n].reset_index(drop=True), df_resultados.iloc[:n].reset_index(drop=True)],
-        axis=1,
+def nombre_seguro(nombre):
+    return sanitizar_nombre_archivo(
+        str(nombre)
     )
 
-    # De la columna "Archivo Excel" quitamos la ruta y nos quedamos solo con el nombre del fichero
-    df_final["Archivo Excel"] = df_final["Archivo Excel"].apply(lambda x: Path(x).name if pd.notna(x) else x)
 
-    # Cambiamos el orden de las columnas "Estado" y "Archivo Excel" y las ponemos las últimas
-    columnas =[col for col in df_final.columns if col != "Archivo Excel" and col != "Estado"] + ["Estado", "Archivo Excel"] 
-    df_final = df_final[columnas]
+def carpeta_experimento(cfg):
+    nombre = (
+        cfg.get("nombre_experimento")
+        or cfg.get("nombre_carpeta_medida")
+        or "experimento"
+    )
 
-    eliminar_archivo_previo(ruta_salida)
-    with pd.ExcelWriter(ruta_salida, engine="openpyxl") as writer:
-        df_final.to_excel(writer, sheet_name="combinaciones_resultados", index=False)
+    ruta = (
+        Path(cfg["carpeta_salida"])
+        / nombre_seguro(nombre)
+    )
 
-    return str(ruta_salida.resolve())
+    ruta.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-# ---------------------------------------------------------------------------
-# Helpers para degradación y NGU401
-# ---------------------------------------------------------------------------
-
-def nombre_seguro(valor: str) -> str:
-    import re
-    return re.sub(r'[<>:\"/\\|?*]+', "_", str(valor)).strip(" ._") or "medida"
-
-def carpeta_experimento(cfg: dict) -> Path:
-    from pathlib import Path
-    nombre = cfg.get("nombre_experimento") or cfg.get("nombre_carpeta_medida") or "experimento"
-    ruta = Path(cfg["carpeta_salida"]) / nombre_seguro(nombre)
-    ruta.mkdir(parents=True, exist_ok=True)
     cfg["carpeta_salida_experimento"] = str(ruta)
+
     return ruta
 
-def guardar_medida(ruta: Path, datos: pd.DataFrame, resumen: dict) -> None:
-    columnas_a_excluir = {"indice_global", "indice_segmento", "tiempo_relativo_s"}
-    columnas_exportar = [col for col in datos.columns if col not in columnas_a_excluir]
-    df_exportar = datos[columnas_exportar].rename(
-        columns={"voltaje_V": "V (V)", "corriente_A": "I (A)", "potencia_W": "P (W)"}
-    )
-    with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
-        df_exportar.to_excel(writer, sheet_name="datos_IV", index=False)
-        pd.DataFrame([resumen]).to_excel(writer, sheet_name="resumen", index=False)
 
-def guardar_resumen_ciclo(ruta: Path, filas: list[dict]) -> None:
+def guardar_medida(
+    ruta: Path,
+    datos: pd.DataFrame,
+    resumen: dict,
+) -> None:
+
+    columnas_a_excluir = {
+        "indice_global",
+        "indice_segmento",
+        "tiempo_relativo_s",
+    }
+
+    columnas_exportar = [
+        columna
+        for columna in datos.columns
+        if columna not in columnas_a_excluir
+    ]
+
+    df_exportar = datos[
+        columnas_exportar
+    ].rename(
+        columns={
+            "voltaje_V": "V (V)",
+            "corriente_A": "I (A)",
+            "potencia_W": "P (W)",
+        }
+    )
+
+    with pd.ExcelWriter(
+        ruta,
+        engine="openpyxl",
+    ) as writer:
+
+        df_exportar.to_excel(
+            writer,
+            sheet_name="datos_IV",
+            index=False,
+        )
+
+        pd.DataFrame(
+            [resumen]
+        ).to_excel(
+            writer,
+            sheet_name="resumen",
+            index=False,
+        )
+
+
+def guardar_resumen_ciclo(
+    ruta: Path,
+    filas: list[dict],
+) -> None:
+    """
+    Añade los nuevos ciclos al Excel combinado y normaliza
+    las unidades sobre TODO el histórico.
+
+    Importante:
+    no se normalizan por separado los ciclos nuevos y los
+    existentes. Primero se juntan y después se escoge una
+    unidad única para cada magnitud.
+    """
+
     if not filas:
         return
+
     nuevas_filas = pd.DataFrame(filas)
+
     ruta = Path(ruta)
+
     if ruta.exists():
         try:
-            existente = pd.read_excel(ruta, sheet_name="resumen_comparativo")
-            acumulado = pd.concat([existente, nuevas_filas], ignore_index=True)
-        except Exception:
-            acumulado = nuevas_filas
-    else:
-        acumulado = nuevas_filas
+            existente = pd.read_excel(
+                ruta,
+                sheet_name="resumen_comparativo",
+            )
 
-    with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
-        acumulado.to_excel(writer, sheet_name="resumen_comparativo", index=False)
+            acumulado_raw = pd.concat(
+                [
+                    existente,
+                    nuevas_filas,
+                ],
+                ignore_index=True,
+            )
+
+        except Exception:
+            acumulado_raw = nuevas_filas
+
+    else:
+        acumulado_raw = nuevas_filas
+
+    acumulado = pd.DataFrame(
+        normalizar_unidades_filas_resumen(
+            acumulado_raw.to_dict(
+                "records"
+            )
+        )
+    )
+
+    with pd.ExcelWriter(
+        ruta,
+        engine="openpyxl",
+    ) as writer:
+
+        acumulado.to_excel(
+            writer,
+            sheet_name="resumen_comparativo",
+            index=False,
+        )
