@@ -11,7 +11,11 @@ import time
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 
-from core.instrument.keithley import liberar_control_manual_keithley, conectar_y_verificar
+from core.instrument.keithley import (
+    conectar_y_verificar,
+    liberar_control_manual_keithley,
+    recuperar_control_automatico_keithley,
+)
 from core.instrument.registry import abortar_instrumento_activo, abortar_motor_activo
 from core.plot.plotter import generar_imagen_tk_curvas_iv_pv
 from core.ui_kit.scaler import ui, ui_font, ui_font_console, ui_font_label, UIConfig
@@ -485,7 +489,7 @@ class StudioFrame(ttk.Frame):
         return "Keithley 2450", conectar_y_verificar(recurso or "AUTO")
 
     def _on_iniciar(self):
-        if self.ejecutando:
+        if not self._comprobar_modo_automatico() or self.ejecutando:
             return
         cfg = self._recoger_config()
         try:
@@ -506,7 +510,7 @@ class StudioFrame(ttk.Frame):
         threading.Thread(target=self._hilo_secuencia, args=(cfg, plan), daemon=True).start()
 
     def _on_medida_rapida(self):
-        if self.ejecutando:
+        if not self._comprobar_modo_automatico() or self.ejecutando:
             return
         cfg = self._recoger_config()
         self.ejecutando = True
@@ -568,14 +572,48 @@ class StudioFrame(ttk.Frame):
         self.txt_log.insert("end", "\n[⏹] Solicitud de aborto enviada...\n")
 
     def _on_modo_manual(self):
+        if self.ejecutando:
+            self.txt_log.insert("end", "\n[AVISO] Espera a que termine la operación actual.\n")
+            return
+        self.ejecutando = True
+        self.btn_manual.configure(state="disabled")
+        recurso = self.vars["recurso_visa"].get().strip()
+        if self.modo_automatico:
+            self.txt_log.insert("end", "\n>>> Liberando Keithley para control manual...\n")
+            threading.Thread(
+                target=self._hilo_cambiar_modo,
+                args=(recurso, False),
+                daemon=True,
+            ).start()
+        else:
+            self.txt_log.insert("end", "\n>>> Recuperando control automático del Keithley...\n")
+            threading.Thread(
+                target=self._hilo_cambiar_modo,
+                args=(recurso, True),
+                daemon=True,
+            ).start()
+
+    def _hilo_cambiar_modo(self, recurso, recuperar):
         try:
-            liberar_control_manual_keithley(self.vars["recurso_visa"].get().strip())
-            mostrar_info("Modo Manual", "Keithley 2450 liberado para control manual local.")
+            if recuperar:
+                recuperar_control_automatico_keithley(recurso)
+            else:
+                liberar_control_manual_keithley(recurso)
+            self.cola_ui.put(("modo_manual", "automatico" if recuperar else "manual"))
         except Exception as exc:
-            mostrar_error("Error", f"No se pudo liberar el SMU:\n{exc}")
+            self.cola_ui.put(("error_modo_manual", str(exc)))
+
+    def _comprobar_modo_automatico(self):
+        if self.modo_automatico:
+            return True
+        mensaje = "No se puede medir mientras el Keithley está en modo manual. Recupera primero el modo automático."
+        self.txt_log.insert("end", f"\n[AVISO] {mensaje}\n")
+        self.txt_log.see("end")
+        mostrar_info("Modo manual", mensaje)
+        return False
 
     def _on_prueba_hardware(self):
-        if self.ejecutando:
+        if not self._comprobar_modo_automatico() or self.ejecutando:
             return
         cfg = self._recoger_config()
         self.ejecutando = True
@@ -692,6 +730,30 @@ class StudioFrame(ttk.Frame):
                 t = theme_mgr.get_current_theme()
                 res_c = t.get("results", {})
                 self._set_badge("✓ LISTO", res_c.get("badge_ready_bg", "#10b981"), res_c.get("badge_ready_fg", "#ffffff"))
+            elif tipo == "modo_manual":
+                self.ejecutando = False
+                self.modo_automatico = dato == "automatico"
+                self.btn_manual.configure(
+                    state="normal",
+                    text=(
+                        "⚙ Liberar Keithley"
+                        if self.modo_automatico
+                        else "↩ Modo automático"
+                    ),
+                )
+                self.txt_log.insert(
+                    "end",
+                    "[OK] Control automático recuperado.\n"
+                    if self.modo_automatico
+                    else "[OK] Keithley liberado para control manual.\n",
+                )
+                self.txt_log.see("end")
+            elif tipo == "error_modo_manual":
+                self.ejecutando = False
+                self.btn_manual.configure(state="normal")
+                self.txt_log.insert("end", f"[ERROR] No se pudo cambiar el modo del Keithley: {dato}\n")
+                self.txt_log.see("end")
+                mostrar_error("Error de control", f"No se pudo cambiar el modo del Keithley:\n{dato}")
 
         self.after(100, self._procesar_cola_ui)
 

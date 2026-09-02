@@ -3,7 +3,10 @@ import unittest
 from unittest.mock import patch
 
 from apps.studio.ui.frame import StudioFrame
-from core.instrument.keithley import liberar_control_manual_keithley
+from core.instrument.keithley import (
+    liberar_control_manual_keithley,
+    recuperar_control_automatico_keithley,
+)
 
 
 class FakeInstrument:
@@ -78,6 +81,19 @@ class StudioMeasureTests(unittest.TestCase):
         conectar.assert_called_once_with("AUTO", timeout_ms=5000)
         go_local.assert_called_once_with(instrumento)
         self.assertEqual(instrumento.writes, [":ABOR", ":SYST:ACC FULL", ":DISP:CLE"])
+        self.assertTrue(instrumento.closed)
+
+    @patch("core.instrument.keithley.enviar_go_to_remote_visa")
+    @patch("core.instrument.keithley.conectar_y_verificar")
+    def test_recuperar_automatico_usa_detector_y_control_remoto(self, conectar, go_remote):
+        instrumento = FakeInstrument()
+        conectar.return_value = instrumento
+        go_remote.return_value = True
+
+        recuperar_control_automatico_keithley("AUTO")
+
+        conectar.assert_called_once_with("AUTO", timeout_ms=5000)
+        go_remote.assert_called_once_with(instrumento)
         self.assertTrue(instrumento.closed)
 
 
