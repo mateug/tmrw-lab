@@ -159,8 +159,8 @@ BLOQUE_UI = {
 BLOQUE_ESTRUCTURA = {
     "eje_estructura_activo": False,
     "estructura": {
-        "puerto_serie": "COM5",
-        "baudrate": 9600,
+        "puerto_serie": "COM4",
+        "baudrate": 115200,
         "estructuras": ["A", "B"],
         "espera_estabilizacion_s": 0.5,
     },

@@ -183,6 +183,7 @@ class StudioFrame(ttk.Frame):
                     "paso_dir": tk.StringVar(value=str(c["directa"]["paso_mV"])),
                     "v_fin_inv": tk.StringVar(value=str(c["inversa"]["v_final_V"])),
                     "paso_inv": tk.StringVar(value=str(c["inversa"]["paso_mV"])),
+                    "invertir_eje_y": tk.BooleanVar(value=c.get("invertir_eje_y_graficas", True)),
                 }
                 for name in estructuras_base
             },
@@ -417,6 +418,7 @@ class StudioFrame(ttk.Frame):
                 "paso_mV": float(kvars["paso_dir"].get() or 10.0),
                 "v_final_inversa_V": float(kvars["v_fin_inv"].get() or -0.5),
                 "paso_inversa_mV": float(kvars["paso_inv"].get() or 10.0),
+                "invertir_eje_y": bool(kvars["invertir_eje_y"].get()),
             }
         v["estructura_lista"].set(", ".join(estructura_nombres))
 
@@ -513,9 +515,10 @@ class StudioFrame(ttk.Frame):
             for nombre in estructuras:
                 if self.evento_aborto.is_set():
                     raise RuntimeError("Prueba abortada por el usuario.")
-                rele.select(nombre)
-                self.cola_ui.put(("log", f"[TEST] Estructura seleccionada: {nombre}\n"))
-                time.sleep(0.2)
+                letra = rele.select(nombre)
+                estado = rele.status()
+                self.cola_ui.put(("log", f"[TEST] Estructura seleccionada: {nombre} ({letra}); relés: {estado}\n"))
+                time.sleep(0.5)
             self.cola_ui.put(("log", "[✓] Prueba de relés y estructuras completada correctamente.\n"))
         except Exception as exc:
             self.cola_ui.put(("log", f"[ERROR] Prueba de relés/estructuras: {exc}\n"))

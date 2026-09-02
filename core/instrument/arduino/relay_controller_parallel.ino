@@ -3,6 +3,7 @@
 const byte NUM_RELAYS = 6;
 const byte NUM_DEVICES = 7;
 const byte RELAY_PINS[NUM_RELAYS] = {2, 3, 4, 5, 6, 7}; // IN1->D2 ... IN6->D7
+// Esta placa activa los relés con nivel LOW.
 const bool ACTIVE_LOW = true;
 
 bool relayActive[NUM_RELAYS] = {false, false, false, false, false, false};
@@ -10,7 +11,11 @@ char commandBuffer[32];
 byte commandLength = 0;
 
 void setRelayPin(byte pin, bool active) {
-	digitalWrite(pin, active == ACTIVE_LOW ? (active ? LOW : HIGH) : (active ? HIGH : LOW));
+	if (ACTIVE_LOW) {
+		digitalWrite(pin, active ? LOW : HIGH);
+	} else {
+		digitalWrite(pin, active ? HIGH : LOW);
+	}
 }
 
 void turnOffAll() {
@@ -31,10 +36,10 @@ void selectDevice(byte device) {
 	while (L < R) {
 		byte rele = (L + R) / 2;
 		if (device <= rele) {
-			R = rele; // Permanece en NC (LOW inactivo)
+			R = rele; // Permanece en NC (relé inactivo)
 		} else {
 			relayActive[rele - 1] = true;
-			setRelayPin(RELAY_PINS[rele - 1], true); // Conmuta a NO (LOW activo)
+			setRelayPin(RELAY_PINS[rele - 1], true); // Conmuta a NO
 			L = rele + 1;
 		}
 	}
