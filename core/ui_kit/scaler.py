@@ -37,6 +37,7 @@ class UIConfig:
     BUTTON_MIN_WIDTH = 60         # Ancho mínimo de los botones de acción
     SCROLLBAR_WIDTH = 16          # Ancho de las barras de desplazamiento
     CONSOLE_HEIGHT = 13           # Filas base de la consola de salida
+    LITE_CONSOLE_WIDTH = 520      # Ancho base de la consola de Lite
 
     # --- Márgenes Internos y Paddings Base (en Píxeles) ---
     PADDING_MAIN_CONTAINER = 30   # Padding alrededor del contenedor principal de bienvenida

@@ -137,8 +137,8 @@ class StressFrame(ttk.Frame):
         parent = ttk.Frame(self)
         parent.pack(fill="both", expand=True, padx=ui(6), pady=ui(4))
 
-        parent.columnconfigure(0, weight=3)
-        parent.columnconfigure(1, weight=2)
+        parent.columnconfigure(0, weight=2)
+        parent.columnconfigure(1, weight=3)
         parent.rowconfigure(0, weight=1)
 
         left = ttk.Frame(parent)

@@ -200,10 +200,13 @@ class StudioFrame(ttk.Frame):
         # Contenedor dividido en 2 columnas
         body = ttk.Frame(self, style="Window.TFrame")
         body.pack(fill="both", expand=True, padx=ui(6), pady=ui(4))
+        body.columnconfigure(0, weight=2)
+        body.columnconfigure(1, weight=3)
+        body.rowconfigure(0, weight=1)
 
         # Columna Izquierda: Panel de Configuración SIN scroll envolvente
         col_izq = ttk.Frame(body, style="Window.TFrame")
-        col_izq.pack(side="left", fill="both", expand=True, padx=(0, ui(4)))
+        col_izq.grid(row=0, column=0, sticky="nsew", padx=(0, ui(4)))
 
         # 1. Panel Fijo: Guardado de datos (encima) + Keithley 2450 + Relación de ejes
         (
@@ -238,9 +241,8 @@ class StudioFrame(ttk.Frame):
         self.nb_ejes.add(self.panel_estructura, text="Eje Estructura")
 
         # Columna Derecha: Consola de Resultados y Previsualización
-        col_der = ttk.Frame(body, width=ui(460), style="Window.TFrame")
-        col_der.pack(side="right", fill="both", expand=False, padx=(ui(4), 0))
-        col_der.pack_propagate(False)
+        col_der = ttk.Frame(body, style="Window.TFrame")
+        col_der.grid(row=0, column=1, sticky="nsew", padx=(ui(4), 0))
 
         f_res = crear_seccion_frame(col_der, "Resultados y Progreso", "results")
         f_res.pack(fill="both", expand=True)
@@ -424,6 +426,59 @@ class StudioFrame(ttk.Frame):
 
         return cfg
 
+    def _callbacks_ui(self):
+        return {
+            "log_callback": lambda mensaje: self.cola_ui.put(("log", str(mensaje))),
+            "grafica_callback": lambda datos, cfg: self.cola_ui.put(("grafica", (datos, cfg))),
+        }
+
+    def _configurar_medida_estructura(self, cfg, estructura, keithley_cfg=None):
+        cfg_local = dict(cfg)
+        cfg_local["estructura"] = dict(
+            cfg.get("estructura", {}),
+            estructuras=[estructura] if estructura else [],
+        )
+        cfg_local["estructura"]["keithley_por_estructura"] = cfg.get(
+            "estructura", {}
+        ).get("keithley_por_estructura", {})
+        cfg_local.update(self._callbacks_ui())
+
+        if keithley_cfg:
+            cfg_local["modo_medida"] = str(
+                keithley_cfg.get("modo_medida", cfg.get("modo_medida", "directa"))
+            ).strip() or cfg.get("modo_medida", "directa")
+            cfg_local["i_max_uA"] = float(
+                keithley_cfg.get("i_max_uA", cfg.get("i_max_uA", 10.0))
+            )
+            cfg_local["i_max_A"] = cfg_local["i_max_uA"] * 1e-6
+            cfg_local["directa"] = dict(cfg.get("directa", {}))
+            cfg_local["directa"].update({
+                "v_inicial_mV": float(keithley_cfg.get(
+                    "v_inicial_mV", cfg_local["directa"].get("v_inicial_mV", 0.0)
+                )),
+                "v_final_mV": float(keithley_cfg.get(
+                    "v_final_mV", cfg_local["directa"].get("v_final_mV", 550.0)
+                )),
+                "paso_mV": float(keithley_cfg.get(
+                    "paso_mV", cfg_local["directa"].get("paso_mV", 10.0)
+                )),
+            })
+            cfg_local["inversa"] = dict(cfg.get("inversa", {}))
+            cfg_local["inversa"].update({
+                "v_final_V": float(keithley_cfg.get(
+                    "v_final_inversa_V", cfg_local["inversa"].get("v_final_V", -0.5)
+                )),
+                "paso_mV": float(keithley_cfg.get(
+                    "paso_inversa_mV", cfg_local["inversa"].get("paso_mV", 10.0)
+                )),
+            })
+            cfg_local["invertir_eje_y_graficas"] = bool(
+                keithley_cfg.get(
+                    "invertir_eje_y", cfg.get("invertir_eje_y_graficas", False)
+                )
+            )
+        return cfg_local
+
     def _conectar_smu_studio(self, cfg):
         """Conecta el Keithley 2450 usado por el modo Studio."""
         recurso = str(cfg.get("recurso_visa", "AUTO")).strip()
@@ -461,17 +516,45 @@ class StudioFrame(ttk.Frame):
         self.btn_test.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
         self._set_badge("MEDIDA RÁPIDA", "#0284c7", "#ffffff")
-        self.txt_log.insert("end", "\n>>> Ejecutando medida rápida de diagnóstico puntual...\n")
+        self.txt_log.insert("end", "\n>>> Ejecutando curvas IV rápidas por estructura...\n")
 
         def _hilo_rapida():
+            rele = None
             try:
                 from core.measure.run_keithley import run as run_k
-                self.cola_ui.put(("log", "[i] Buscando Keithley 2450 por VISA...\n"))
-                datos = run_k(cfg)
-                self.cola_ui.put(("log", f"[OK] Medida rápida completada ({datos.get('puntos_medidos', 0)} puntos).\n"))
+                estructuras = cfg.get("estructura", {}).get("estructuras") or []
+                if cfg.get("eje_estructura_activo", False):
+                    rele = crear_rele_estructura(cfg, self.evento_aborto)
+                    rele.connect()
+                if not estructuras:
+                    estructuras = [None]
+                for idx, estructura in enumerate(estructuras, 1):
+                    if self.evento_aborto.is_set():
+                        break
+                    if estructura and rele is not None:
+                        rele.select(estructura)
+                    self.cola_ui.put(("log", f"[{idx}/{len(estructuras)}] Medida IV rápida: {estructura or 'sin estructura'}\n"))
+                    keithley_cfg = cfg.get("estructura", {}).get(
+                        "keithley_por_estructura", {}
+                    ).get(estructura, {})
+                    cfg_local = self._configurar_medida_estructura(
+                        cfg, estructura, keithley_cfg
+                    )
+                    cfg_local["es_medida_rapida"] = True
+                    cfg_local["guardar_archivos"] = False
+                    datos = run_k(cfg_local)
+                    self.cola_ui.put((
+                        "log",
+                        f"[OK] {estructura or 'Medida'} completada ({datos.get('puntos_medidos', 0)} puntos, sin guardar).\n",
+                    ))
             except Exception as exc:
                 self.cola_ui.put(("log", f"[ERROR] Fallo en medida rápida: {exc}\n"))
             finally:
+                if rele is not None:
+                    try:
+                        rele.close()
+                    except Exception:
+                        pass
                 self.cola_ui.put(("fin_secuencia", None))
 
         threading.Thread(target=_hilo_rapida, daemon=True).start()
@@ -542,8 +625,6 @@ class StudioFrame(ttk.Frame):
                 if simulador is not None:
                     simulador.connect()
 
-            smu_obj = conectar_y_verificar(cfg.get("recurso_visa", ""))
-
             for idx, paso in enumerate(plan, 1):
                 if self.evento_aborto.is_set():
                     self.cola_ui.put(("log", "\n[⏹] Secuencia abortada por el usuario.\n"))
@@ -556,21 +637,9 @@ class StudioFrame(ttk.Frame):
                         self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Seleccionando estructura: {estructura}\n"))
                         rele.select(estructura)
                     self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando medida para {estructura or 'estructura no seleccionada'} (Keithley 2450)\n"))
-                    cfg_local = dict(cfg)
-                    cfg_local["estructura"] = dict(cfg.get("estructura", {}), estructuras=[estructura] if estructura else [])
-                    cfg_local["estructura"]["keithley_por_estructura"] = cfg.get("estructura", {}).get("keithley_por_estructura", {})
-                    if keithley_cfg:
-                        cfg_local["modo_medida"] = str(keithley_cfg.get("modo_medida", cfg.get("modo_medida", "directa"))).strip() or cfg.get("modo_medida", "directa")
-                        cfg_local["i_max_uA"] = float(keithley_cfg.get("i_max_uA", cfg.get("i_max_uA", 10.0)))
-                        cfg_local["i_max_A"] = cfg_local["i_max_uA"] * 1e-6
-                        cfg_local["directa"] = dict(cfg.get("directa", {}))
-                        cfg_local["directa"]["v_inicial_mV"] = float(keithley_cfg.get("v_inicial_mV", cfg_local["directa"].get("v_inicial_mV", 0.0)))
-                        cfg_local["directa"]["v_final_mV"] = float(keithley_cfg.get("v_final_mV", cfg_local["directa"].get("v_final_mV", 550.0)))
-                        cfg_local["directa"]["paso_mV"] = float(keithley_cfg.get("paso_mV", cfg_local["directa"].get("paso_mV", 10.0)))
-                        cfg_local["inversa"] = dict(cfg.get("inversa", {}))
-                        cfg_local["inversa"]["v_final_V"] = float(keithley_cfg.get("v_final_V", cfg_local["inversa"].get("v_final_V", -0.5)))
-                        cfg_local["inversa"]["paso_mV"] = float(keithley_cfg.get("paso_mV", cfg_local["inversa"].get("paso_mV", 10.0)))
-                        cfg_local["invertir_eje_y_graficas"] = bool(keithley_cfg.get("invertir_eje_y", cfg.get("invertir_eje_y_graficas", False)))
+                    cfg_local = self._configurar_medida_estructura(
+                        cfg, estructura, keithley_cfg
+                    )
                     from core.measure.run_keithley import run as run_keithley_medida
                     run_keithley_medida(cfg_local)
                     time.sleep(0.1)
@@ -600,11 +669,6 @@ class StudioFrame(ttk.Frame):
                     simulador.close()
                 except Exception:
                     pass
-            if smu_obj is not None:
-                try:
-                    smu_obj.close()
-                except Exception:
-                    pass
             self.cola_ui.put(("fin_secuencia", None))
 
     def _set_badge(self, texto, bg, fg):
@@ -616,6 +680,8 @@ class StudioFrame(ttk.Frame):
             if tipo == "log":
                 self.txt_log.insert("end", str(dato))
                 self.txt_log.see("end")
+            elif tipo == "grafica":
+                self._mostrar_grafica(*dato)
             elif tipo == "fin_secuencia":
                 self.ejecutando = False
                 self.btn_iniciar.configure(state="normal")
@@ -628,3 +694,16 @@ class StudioFrame(ttk.Frame):
                 self._set_badge("✓ LISTO", res_c.get("badge_ready_bg", "#10b981"), res_c.get("badge_ready_fg", "#ffffff"))
 
         self.after(100, self._procesar_cola_ui)
+
+    def _mostrar_grafica(self, datos, cfg):
+        try:
+            imagen = generar_imagen_tk_curvas_iv_pv(datos, cfg)
+            if imagen is None:
+                return
+            self._imagenes_log.append(imagen)
+            self.txt_log.insert("end", "\n")
+            self.txt_log.image_create("end", image=imagen)
+            self.txt_log.insert("end", "\n")
+            self.txt_log.see("end")
+        except Exception as exc:
+            self.txt_log.insert("end", f"[AVISO] No se pudo mostrar la curva: {exc}\n")

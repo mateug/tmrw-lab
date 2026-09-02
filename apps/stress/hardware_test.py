@@ -70,4 +70,3 @@ def probar_reles_y_dispositivos(cfg):
             pass
 
 
-test_relays_and_devices = probar_reles_y_dispositivos

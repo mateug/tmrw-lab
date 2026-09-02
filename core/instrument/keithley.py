@@ -366,13 +366,9 @@ def enviar_go_to_local_visa(inst):
 
 def liberar_control_manual_keithley(recurso_visa: str, timeout_ms: int = 5000):
     """Libera el Keithley 2450 permitiendo la operación manual en su pantalla táctil."""
-    if not recurso_visa:
-        return
-    rm = None
     inst = None
     try:
-        rm = pyvisa.ResourceManager()
-        inst = rm.open_resource(recurso_visa)
+        inst = conectar_y_verificar(recurso_visa or "AUTO", timeout_ms=timeout_ms)
         inst.timeout = int(timeout_ms)
         inst.write_termination = "\n"
         inst.read_termination = "\n"
@@ -401,11 +397,6 @@ def liberar_control_manual_keithley(recurso_visa: str, timeout_ms: int = 5000):
         if inst is not None:
             try:
                 inst.close()
-            except Exception:
-                pass
-        if rm is not None:
-            try:
-                rm.close()
             except Exception:
                 pass
 

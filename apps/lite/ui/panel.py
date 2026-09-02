@@ -292,7 +292,7 @@ class LiteFrame(ttk.Frame):
         self.btn_manual.pack(side="left", padx=ui(4))
 
         # Columna Derecha: Consola de Progreso
-        col_der = ttk.Frame(body, width=ui(420), style="Window.TFrame")
+        col_der = ttk.Frame(body, width=ui(UIConfig.LITE_CONSOLE_WIDTH), style="Window.TFrame")
         col_der.pack(side="right", fill="both", expand=False, padx=(ui(4), 0))
         col_der.pack_propagate(False)
 
