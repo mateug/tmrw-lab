@@ -466,10 +466,9 @@ class StudioFrame(ttk.Frame):
         def _hilo_rapida():
             try:
                 from core.measure.run_keithley import run as run_k
-                smu = conectar_y_verificar(cfg.get("recurso_visa", ""))
-                self.cola_ui.put(("log", "[i] Instrumento de diagnóstico: Keithley 2450\n"))
+                self.cola_ui.put(("log", "[i] Buscando Keithley 2450 por VISA...\n"))
                 datos = run_k(cfg)
-                self.cola_ui.put(("log", f"[✓] Medida rápida completada ({len(datos.get('voltaje_V', []))} puntos).\n"))
+                self.cola_ui.put(("log", f"[OK] Medida rápida completada ({datos.get('puntos_medidos', 0)} puntos).\n"))
             except Exception as exc:
                 self.cola_ui.put(("log", f"[ERROR] Fallo en medida rápida: {exc}\n"))
             finally:
