@@ -259,7 +259,13 @@ def construir_eje_leds(cfg: dict) -> list[dict]:
 
     elif modo == "longitud_onda":
         l_cfg = cfg["irradiancia_longitud_onda"]
-        canal = normalizar_canal_ossila(l_cfg.get("canales_seleccionados", "390"))
+        canales_raw = l_cfg.get("canales_seleccionados", "390")
+        if isinstance(canales_raw, str):
+            canales_raw = [item.strip() for item in canales_raw.split(",") if item.strip()]
+        canales = [normalizar_canal_ossila(canal) for canal in canales_raw if str(canal).strip()]
+        if not canales:
+            raise ValueError("Selecciona al menos un canal LED para el submodo de longitud de onda.")
+
         if l_cfg.get("lista_intensidades_custom"):
             intensidades = [float(x.strip()) for x in str(l_cfg["lista_intensidades_custom"]).split(",") if x.strip()]
         else:
@@ -269,6 +275,9 @@ def construir_eje_leds(cfg: dict) -> list[dict]:
             if paso <= 0:
                 raise ValueError("El paso de intensidad debe ser mayor que 0.")
             intensidades = list(np.arange(i_ini, i_fin + paso / 2, paso))
+
+        if not intensidades or any(not np.isfinite(valor) or valor < 0 or valor > 100 for valor in intensidades):
+            raise ValueError("Las intensidades LED deben estar entre 0 y 100 %." )
 
         return [
             {
@@ -280,6 +289,7 @@ def construir_eje_leds(cfg: dict) -> list[dict]:
                     "espera_encendido_medida_s": float(l_cfg.get("espera_encendido_medida_s", 3.0)),
                 },
             }
+            for canal in canales
             for i in intensidades
         ]
 

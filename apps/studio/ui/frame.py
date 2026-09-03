@@ -17,7 +17,12 @@ from core.instrument.keithley import (
     liberar_control_manual_keithley,
     recuperar_control_automatico_keithley,
 )
-from core.instrument.registry import abortar_instrumento_activo, abortar_motor_activo
+from core.instrument.registry import (
+    abortar_instrumento_activo,
+    abortar_motor_activo,
+    registrar_simulador_solar_activo,
+    limpiar_simulador_solar_activo,
+)
 from core.plot.plotter import generar_imagen_tk_curvas_iv_pv
 from core.ui_kit.scaler import ui, ui_font, ui_font_console, ui_font_label, UIConfig
 from core.ui_kit.shared import crear_barra_superior, crear_seccion_frame, mostrar_error, mostrar_info
@@ -31,7 +36,11 @@ from apps.studio.ui.panel_motor import PanelEjesMotor
 from apps.studio.ui.panel_led import PanelEjeIluminacion
 from apps.studio.ui.panel_estructura import PanelEjeEstructura
 from core.instrument.relay_structure import crear_rele_estructura
-from core.instrument.solar_simulator import crear_controlador_simulador_solar, normalizar_canal_ossila
+from core.instrument.solar_simulator import (
+    crear_controlador_simulador_solar,
+    normalizar_canal_ossila,
+    configurar_paso_solar,
+)
 
 
 class StudioFrame(ttk.Frame):
@@ -222,6 +231,7 @@ class StudioFrame(ttk.Frame):
             self.btn_abortar,
             self.btn_manual,
             self.btn_test,
+            self.btn_test_solar,
         ) = crear_panel_medida_fijo(
             col_izq,
             self.vars,
@@ -230,6 +240,7 @@ class StudioFrame(ttk.Frame):
             callback_abortar=self._on_abortar,
             callback_modo_manual=self._on_modo_manual,
             callback_prueba=self._on_prueba_hardware,
+            callback_prueba_solar=self._on_prueba_solar,
         )
         f_medida.pack(fill="x", pady=(0, ui(4)))
 
@@ -505,6 +516,7 @@ class StudioFrame(ttk.Frame):
         self.btn_iniciar.configure(state="disabled")
         self.btn_rapida.configure(state="disabled")
         self.btn_test.configure(state="disabled")
+        self.btn_test_solar.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
         self._set_badge("MIDIENDO", "#f59e0b", "#ffffff")
         self.txt_log.insert("end", f"\n>>> INICIANDO SECUENCIA ({len(plan)} pasos planificados)...\n")
@@ -520,6 +532,7 @@ class StudioFrame(ttk.Frame):
         self.btn_iniciar.configure(state="disabled")
         self.btn_rapida.configure(state="disabled")
         self.btn_test.configure(state="disabled")
+        self.btn_test_solar.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
         self._set_badge("MEDIDA RÁPIDA", "#0284c7", "#ffffff")
         self.txt_log.insert("end", "\n>>> Ejecutando curvas IV rápidas por estructura...\n")
@@ -624,10 +637,65 @@ class StudioFrame(ttk.Frame):
         self.btn_iniciar.configure(state="disabled")
         self.btn_rapida.configure(state="disabled")
         self.btn_test.configure(state="disabled")
+        self.btn_test_solar.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
         self._set_badge("TEST RELÉS", "#7c3aed", "#ffffff")
         self.txt_log.insert("end", "\n>>> Probando relés y estructuras del eje Studio...\n")
         threading.Thread(target=self._hilo_prueba_hardware, args=(cfg,), daemon=True).start()
+
+    def _on_prueba_solar(self):
+        if not self._comprobar_modo_automatico() or self.ejecutando:
+            return
+        cfg = self._recoger_config()
+        self.ejecutando = True
+        self.evento_aborto.clear()
+        self.btn_iniciar.configure(state="disabled")
+        self.btn_rapida.configure(state="disabled")
+        self.btn_test.configure(state="disabled")
+        self.btn_test_solar.configure(state="disabled")
+        self.btn_abortar.configure(state="normal")
+        self._set_badge("TEST LUZ", "#0f766e", "#ffffff")
+        self.txt_log.insert("end", "\n>>> Probando simulador solar: potencia y 11 LEDs...\n")
+        threading.Thread(target=self._hilo_prueba_solar, args=(cfg,), daemon=True).start()
+
+    def _hilo_prueba_solar(self, cfg):
+        simulador = None
+        try:
+            simulador = crear_controlador_simulador_solar(
+                {**cfg, "simulador_solar_activo": True}, self.evento_aborto
+            )
+            simulador.connect()
+            registrar_simulador_solar_activo(simulador)
+            self.cola_ui.put(("log", "[TEST] Encendiendo potencia: 100 mW/cm2\n"))
+            simulador.encender_y_verificar(100.0)
+            self._esperar_abortable(1.0)
+            canales = ["390", "450", "515", "cool_white", "warm_white", "600", "630", "660", "730", "850", "950"]
+            for index, canal in enumerate(canales, 1):
+                self._esperar_abortable(0.2)
+                simulador.apagar()
+                simulador.enviar_comando_personalizado(
+                    "<ch{channel}:{intensity}>", channel=canal, intensity=50
+                )
+                self.cola_ui.put(("log", f"[TEST] LED {index}/{len(canales)}: {canal} al 50%\n"))
+            simulador.apagar()
+            self.cola_ui.put(("log", "[OK] Prueba del simulador solar completada.\n"))
+        except Exception as exc:
+            self.cola_ui.put(("log", f"[ERROR] Prueba del simulador solar: {exc}\n"))
+        finally:
+            if simulador is not None:
+                limpiar_simulador_solar_activo(simulador)
+                try:
+                    simulador.close()
+                except Exception:
+                    pass
+            self.cola_ui.put(("fin_secuencia", None))
+
+    def _esperar_abortable(self, segundos):
+        limite = time.monotonic() + max(0.0, float(segundos))
+        while time.monotonic() < limite:
+            if self.evento_aborto.is_set():
+                raise RuntimeError("Secuencia abortada por el usuario.")
+            time.sleep(min(0.05, limite - time.monotonic()))
 
     def _hilo_prueba_hardware(self, cfg):
         rele = None
@@ -666,6 +734,7 @@ class StudioFrame(ttk.Frame):
             if cfg.get("simulador_solar_activo", False):
                 simulador = crear_controlador_simulador_solar(cfg, self.evento_aborto)
                 if simulador is not None:
+                    registrar_simulador_solar_activo(simulador)
                     simulador.connect()
 
             for idx, paso in enumerate(plan, 1):
@@ -680,6 +749,15 @@ class StudioFrame(ttk.Frame):
                         self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Seleccionando estructura: {estructura}\n"))
                         rele.select(estructura)
                         time.sleep(float(cfg.get("estructura", {}).get("espera_conmutacion_s", 0.0)))
+                    solar = paso.get("solar_params") or {}
+                    if simulador is not None:
+                        configurar_paso_solar(
+                            simulador,
+                            paso.get("solar_modo", "off"),
+                            solar,
+                        )
+                        self._esperar_abortable(solar.get("espera_estabilizacion_s", 0.0))
+                        self._esperar_abortable(solar.get("espera_encendido_medida_s", 0.0))
                     self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando medida para {estructura or 'estructura no seleccionada'} (Keithley 2450)\n"))
                     cfg_local = self._configurar_medida_estructura(
                         cfg, estructura, keithley_cfg
@@ -760,6 +838,7 @@ class StudioFrame(ttk.Frame):
                 except Exception:
                     pass
             if simulador is not None:
+                limpiar_simulador_solar_activo(simulador)
                 try:
                     simulador.close()
                 except Exception:
@@ -783,6 +862,8 @@ class StudioFrame(ttk.Frame):
                 self.btn_rapida.configure(state="normal")
                 if hasattr(self, "btn_test"):
                     self.btn_test.configure(state="normal")
+                if hasattr(self, "btn_test_solar"):
+                    self.btn_test_solar.configure(state="normal")
                 self.btn_abortar.configure(state="disabled")
                 t = theme_mgr.get_current_theme()
                 res_c = t.get("results", {})

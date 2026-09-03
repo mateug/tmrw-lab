@@ -14,10 +14,15 @@ from core.instrument.keithley import (
     liberar_control_manual_keithley,
     recuperar_control_automatico_keithley,
 )
-from core.instrument.registry import abortar_instrumento_activo, abortar_motor_activo
+from core.instrument.registry import (
+    abortar_instrumento_activo,
+    abortar_motor_activo,
+    registrar_simulador_solar_activo,
+    limpiar_simulador_solar_activo,
+)
 from core.instrument.motors.motor_lineal import crear_controlador_motor
 from core.instrument.relay_structure import crear_rele_estructura
-from core.instrument.solar_simulator import crear_controlador_simulador_solar
+from core.instrument.solar_simulator import crear_controlador_simulador_solar, configurar_paso_solar
 from core.plot.plotter import generar_imagen_tk_curvas_iv_pv
 from core.ui_kit.scaler import ui, ui_font, ui_font_console, UIConfig
 from core.ui_kit.shared import (
@@ -167,6 +172,16 @@ class LiteFrame(ttk.Frame):
         self.btn_abortar.pack(side="left", padx=ui(4))
         self.btn_manual = ttk.Button(f_ctrl, text="⚙ Liberar Keithley", style="Tool.TButton", command=self._on_modo_manual)
         self.btn_manual.pack(side="left", padx=ui(4))
+        self.btn_test_reles = ttk.Button(
+            f_ctrl, text="🧪 TEST RELÉS / ESTRUCTURAS", style="Tool.TButton",
+            command=self._on_prueba_reles,
+        )
+        self.btn_test_reles.pack(side="left", padx=ui(4))
+        self.btn_test_solar = ttk.Button(
+            f_ctrl, text="☀ TEST SIMULADOR SOLAR", style="Tool.TButton",
+            command=self._on_prueba_solar,
+        )
+        self.btn_test_solar.pack(side="left", padx=ui(4))
 
         # [3] Receta Excel, resumen y tiempos aplicables
         f_receta = crear_seccion_frame(col_izq, "[3] Receta Excel y Parámetros (Submodo E)", "params")
@@ -502,6 +517,8 @@ class LiteFrame(ttk.Frame):
         self.ejecutando = True
         self.evento_aborto.clear()
         self.btn_iniciar.configure(state="disabled")
+        self.btn_test_reles.configure(state="disabled")
+        self.btn_test_solar.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
         plan = insertar_enfriamientos_lite(
             self._plan_lite,
@@ -510,6 +527,86 @@ class LiteFrame(ttk.Frame):
         )
         self.txt_log.insert("end", f"\n>>> INICIANDO EJECUCIÓN DE RECETA ({plan.measure_count} medidas)...\n")
         threading.Thread(target=self._hilo_receta, args=(cfg, plan), daemon=True).start()
+
+    def _on_prueba_solar(self):
+        if not self._comprobar_modo_automatico() or self.ejecutando:
+            return
+        cfg = self._recoger_config()
+        self.ejecutando = True
+        self.evento_aborto.clear()
+        for button in (self.btn_iniciar, self.btn_test_reles, self.btn_test_solar):
+            button.configure(state="disabled")
+        self.btn_abortar.configure(state="normal")
+        self.txt_log.insert("end", "\n>>> Probando simulador solar: potencia y 11 LEDs...\n")
+        threading.Thread(target=self._hilo_prueba_solar, args=(cfg,), daemon=True).start()
+
+    def _hilo_prueba_solar(self, cfg):
+        simulador = None
+        try:
+            simulador = crear_controlador_simulador_solar(
+                {**cfg, "simulador_solar_activo": True}, self.evento_aborto
+            )
+            simulador.connect()
+            registrar_simulador_solar_activo(simulador)
+            self.cola_ui.put(("log", "[TEST] Encendiendo potencia: 100 mW/cm2\n"))
+            simulador.encender_y_verificar(100.0)
+            self._esperar_abortable(1.0)
+            canales = ["390", "450", "515", "cool_white", "warm_white", "600", "630", "660", "730", "850", "950"]
+            for index, canal in enumerate(canales, 1):
+                self._esperar_abortable(0.2)
+                simulador.apagar()
+                simulador.enviar_comando_personalizado(
+                    cfg.get("plantilla_comando_excel", "<ch{channel}:{intensity}>"),
+                    channel=canal,
+                    intensity=50,
+                )
+                self.cola_ui.put(("log", f"[TEST] LED {index}/{len(canales)}: {canal} al 50%\n"))
+            simulador.apagar()
+            self.cola_ui.put(("log", "[OK] Prueba del simulador solar completada.\n"))
+        except Exception as exc:
+            self.cola_ui.put(("log", f"[ERROR] Prueba del simulador solar: {exc}\n"))
+        finally:
+            if simulador is not None:
+                limpiar_simulador_solar_activo(simulador)
+                try:
+                    simulador.close()
+                except Exception:
+                    pass
+            self.cola_ui.put(("fin", False))
+
+    def _on_prueba_reles(self):
+        if not self._comprobar_modo_automatico() or self.ejecutando:
+            return
+        cfg = self._recoger_config()
+        self.ejecutando = True
+        self.evento_aborto.clear()
+        for button in (self.btn_iniciar, self.btn_test_reles, self.btn_test_solar):
+            button.configure(state="disabled")
+        self.btn_abortar.configure(state="normal")
+        self.txt_log.insert("end", "\n>>> Probando relés y estructuras...\n")
+        threading.Thread(target=self._hilo_prueba_reles, args=(cfg,), daemon=True).start()
+
+    def _hilo_prueba_reles(self, cfg):
+        rele = None
+        try:
+            estructuras = cfg.get("estructura", {}).get("estructuras") or ["Estructura 1", "Estructura 2"]
+            rele = crear_rele_estructura(cfg, self.evento_aborto)
+            rele.connect()
+            for index, estructura in enumerate(estructuras, 1):
+                if self.evento_aborto.is_set():
+                    raise RuntimeError("Prueba abortada por el usuario.")
+                letra = rele.select(estructura)
+                self.cola_ui.put(("log", f"[TEST] Estructura {index}/{len(estructuras)}: {estructura} ({letra})\n"))
+            self.cola_ui.put(("log", "[OK] Prueba de relés completada.\n"))
+        except Exception as exc:
+            self.cola_ui.put(("log", f"[ERROR] Prueba de relés: {exc}\n"))
+        finally:
+            if rele is not None:
+                try:
+                    rele.close()
+                except Exception:
+                    pass
+            self.cola_ui.put(("fin", False))
 
     def _esperar_abortable(self, segundos):
         limite = time.monotonic() + max(0.0, float(segundos))
@@ -538,6 +635,7 @@ class LiteFrame(ttk.Frame):
                 self._motores_activos = list(motores.values())
             if cfg.get("simulador_solar_activo"):
                 simulador = crear_controlador_simulador_solar(cfg, self.evento_aborto)
+                registrar_simulador_solar_activo(simulador)
                 simulador.connect()
             if cfg.get("eje_estructura_activo"):
                 rele = crear_rele_estructura(cfg, self.evento_aborto)
@@ -563,13 +661,15 @@ class LiteFrame(ttk.Frame):
                         controlador.move_absolute_steps(posicion["pasos"])
                     self._esperar_abortable(cfg.get("espera_motor_s", 0.0))
                 if simulador:
-                    simulador.apagar()
-                    for channel, intensity in step["leds"].items():
-                        simulador.enviar_comando_personalizado(
-                            cfg.get("plantilla_comando_excel", "<ch{channel}:{intensity}>"),
-                            channel=channel,
-                            intensity=intensity,
-                        )
+                    configurar_paso_solar(
+                        simulador,
+                        "combinacion",
+                        {
+                            "canales": list(step["leds"]),
+                            "intensidades": list(step["leds"].values()),
+                        },
+                        cfg.get("plantilla_comando_excel", "<ch{channel}:{intensity}>"),
+                    )
                     self._esperar_abortable(cfg.get("espera_luz_encendida_s", 0.0))
                 if rele and step.get("estructura"):
                     rele.select(nombre_estructura)
@@ -608,6 +708,7 @@ class LiteFrame(ttk.Frame):
             self.cola_ui.put(("log", f"\n[{'⏹' if self.evento_aborto.is_set() else 'ERROR'}] Secuencia finalizada: {exc}\n"))
         finally:
             if simulador is not None:
+                limpiar_simulador_solar_activo(simulador)
                 try:
                     simulador.close(apagar=cfg.get("apagar_al_final", True))
                 except Exception:
@@ -684,6 +785,8 @@ class LiteFrame(ttk.Frame):
             elif tipo == "fin":
                 self.ejecutando = False
                 self.btn_iniciar.configure(state="normal")
+                self.btn_test_reles.configure(state="normal")
+                self.btn_test_solar.configure(state="normal")
                 self.btn_abortar.configure(state="disabled")
             elif tipo == "modo_manual":
                 self.ejecutando = False

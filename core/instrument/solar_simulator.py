@@ -412,3 +412,43 @@ def crear_controlador_simulador_solar(cfg, evento_aborto=None):
         return None
     return ControladorSimuladorSolarOssila(cfg["simulador_solar"], evento_aborto=evento_aborto)
 
+
+def configurar_paso_solar(controlador, solar_modo, solar_params=None, plantilla=None):
+    """Apaga el estado anterior y aplica una configuración de iluminación.
+
+    Los modos LED se verifican mediante la respuesta del comando y el estado de
+    error del controlador; ``power:undef`` es válido cuando se controla por canal.
+    """
+    parametros = solar_params or {}
+    modo = str(solar_modo or "off").strip().lower()
+    controlador.apagar()
+
+    if modo == "off":
+        return
+    if modo == "potencia":
+        potencia = float(parametros.get("potencia_mW_cm2", 0.0))
+        if potencia > 0:
+            controlador.encender_y_verificar(potencia)
+        return
+
+    plantilla = plantilla or "<ch{channel}:{intensity}>"
+    if modo == "longitud_onda":
+        controlador.enviar_comando_personalizado(
+            plantilla,
+            channel=parametros.get("canal", ""),
+            intensity=parametros.get("intensidad_pct", 0),
+        )
+        return
+    if modo == "combinacion":
+        for canal, intensidad in zip(
+            parametros.get("canales", []), parametros.get("intensidades", [])
+        ):
+            controlador.enviar_comando_personalizado(
+                plantilla,
+                channel=canal,
+                intensity=intensidad,
+            )
+        return
+
+    raise ErrorSimuladorSolar(f"Modo de iluminación desconocido: {solar_modo!r}")
+
