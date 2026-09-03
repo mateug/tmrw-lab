@@ -54,6 +54,7 @@ class StudioFrame(ttk.Frame):
 
     def _inicializar_variables(self):
         c = self.cfg_base
+        estructura_cfg = c.get("estructura", {})
         m = c.get("motor", {})
         s = c.get("simulador_solar", {})
         ip = c.get("irradiancia_potencia", {})
@@ -170,7 +171,6 @@ class StudioFrame(ttk.Frame):
                 "relaciones": ["1-1"],
             }],
             "solar_espera_encendido_s": tk.StringVar(value="0.0"),
-            "solar_espera_estab_s": tk.StringVar(value="1.0"),
             "solar_tiempo_enfriado_s": tk.StringVar(value="0.0"),
             "solar_tiempo_espera_cada_n": tk.StringVar(value="0.0"),
             "solar_cada_n_medidas_estructura": tk.StringVar(value="0"),
@@ -196,7 +196,7 @@ class StudioFrame(ttk.Frame):
             "estructura_lista": tk.StringVar(value="Estructura 1, Estructura 2"),
             "estructura_puerto_serie": tk.StringVar(value=c.get("estructura", {}).get("puerto_serie", "COM5")),
             "estructura_baudrate": tk.StringVar(value=str(c.get("estructura", {}).get("baudrate", 9600))),
-            "estructura_espera_s": tk.StringVar(value="0.5"),
+            "estructura_espera_s": tk.StringVar(value=str(estructura_cfg.get("espera_conmutacion_s", estructura_cfg.get("espera_estabilizacion_s", 0.5)))),
         }
 
     def _crear_ui(self):
@@ -412,7 +412,7 @@ class StudioFrame(ttk.Frame):
         cfg["estructura"]["puerto_serie"] = v["estructura_puerto_serie"].get().strip()
         cfg["estructura"]["baudrate"] = int(v["estructura_baudrate"].get() or 9600)
         cfg["estructura"]["estructuras"] = estructura_nombres
-        cfg["estructura"]["espera_estabilizacion_s"] = float(v["estructura_espera_s"].get() or 0.5)
+        cfg["estructura"]["espera_conmutacion_s"] = float(v["estructura_espera_s"].get() or 0.5)
         cfg["estructura"]["keithley_por_estructura"] = {}
         for nombre_base in estructura_seleccionadas:
             nombre_mostrar = v["estructura_nombres_dict"][nombre_base].get().strip() or nombre_base
@@ -539,6 +539,7 @@ class StudioFrame(ttk.Frame):
                         break
                     if estructura and rele is not None:
                         rele.select(estructura)
+                        time.sleep(float(cfg.get("estructura", {}).get("espera_conmutacion_s", 0.0)))
                     self.cola_ui.put(("log", f"[{idx}/{len(estructuras)}] Medida IV rápida: {estructura or 'sin estructura'}\n"))
                     keithley_cfg = cfg.get("estructura", {}).get(
                         "keithley_por_estructura", {}
@@ -678,6 +679,7 @@ class StudioFrame(ttk.Frame):
                     if estructura and rele is not None:
                         self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Seleccionando estructura: {estructura}\n"))
                         rele.select(estructura)
+                        time.sleep(float(cfg.get("estructura", {}).get("espera_conmutacion_s", 0.0)))
                     self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando medida para {estructura or 'estructura no seleccionada'} (Keithley 2450)\n"))
                     cfg_local = self._configurar_medida_estructura(
                         cfg, estructura, keithley_cfg

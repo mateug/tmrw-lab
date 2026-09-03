@@ -20,9 +20,8 @@ CONFIG_LITE_DEFAULT = {
     # Parámetros específicos de receta Excel (Submodo E de iv-maker)
     "ruta_excel_receta": "",
     "hoja_excel": "",
-    "excel_valores_0_1": True,
+    "excel_valores_0_1": False,
     "plantilla_comando_excel": "<ch{channel}:{intensity}>",
-    "espera_estabilizacion_s": 1.0,
     "espera_luz_encendida_s": 0.0,
     "espera_motor_s": 0.0,
     "tiempo_enfriado_s": 0.0,

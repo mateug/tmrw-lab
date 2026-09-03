@@ -91,14 +91,12 @@ class PanelEjeIluminacion(ttk.Frame):
         f_t_grid.pack(fill="x", pady=ui(2))
         ttk.Label(f_t_grid, text="Espera encendido previo (s):", style="Params.TLabel").grid(row=0, column=0, sticky="w", padx=ui(4))
         ttk.Entry(f_t_grid, textvariable=self.vars["solar_espera_encendido_s"], width=8).grid(row=0, column=1, sticky="w", padx=ui(4))
-        ttk.Label(f_t_grid, text="Espera estabilización óptica (s):", style="Params.TLabel").grid(row=0, column=2, sticky="w", padx=(ui(12), ui(4)))
-        ttk.Entry(f_t_grid, textvariable=self.vars["solar_espera_estab_s"], width=8).grid(row=0, column=3, sticky="w", padx=ui(4))
-        ttk.Label(f_t_grid, text="Tiempo enfriamiento/reposo (s):", style="Params.TLabel").grid(row=0, column=4, sticky="w", padx=(ui(12), ui(4)))
-        ttk.Entry(f_t_grid, textvariable=self.vars["solar_tiempo_enfriado_s"], width=8).grid(row=0, column=5, sticky="w", padx=ui(4))
-        ttk.Label(f_t_grid, text="Cada N medidas estructura:", style="Params.TLabel").grid(row=0, column=6, sticky="w", padx=(ui(12), ui(4)))
-        ttk.Entry(f_t_grid, textvariable=self.vars["solar_cada_n_medidas_estructura"], width=8).grid(row=0, column=7, sticky="w", padx=ui(4))
-        ttk.Label(f_t_grid, text="Tiempo espera cada N medidas (s):", style="Params.TLabel").grid(row=0, column=8, sticky="w", padx=(ui(12), ui(4)))
-        ttk.Entry(f_t_grid, textvariable=self.vars["solar_tiempo_espera_cada_n"], width=8).grid(row=0, column=9, sticky="w", padx=ui(4))
+        ttk.Label(f_t_grid, text="Tiempo enfriamiento/reposo (s):", style="Params.TLabel").grid(row=0, column=2, sticky="w", padx=(ui(12), ui(4)))
+        ttk.Entry(f_t_grid, textvariable=self.vars["solar_tiempo_enfriado_s"], width=8).grid(row=0, column=3, sticky="w", padx=ui(4))
+        ttk.Label(f_t_grid, text="Cada N medidas estructura:", style="Params.TLabel").grid(row=0, column=4, sticky="w", padx=(ui(12), ui(4)))
+        ttk.Entry(f_t_grid, textvariable=self.vars["solar_cada_n_medidas_estructura"], width=8).grid(row=0, column=5, sticky="w", padx=ui(4))
+        ttk.Label(f_t_grid, text="Tiempo espera cada N medidas (s):", style="Params.TLabel").grid(row=0, column=6, sticky="w", padx=(ui(12), ui(4)))
+        ttk.Entry(f_t_grid, textvariable=self.vars["solar_tiempo_espera_cada_n"], width=8).grid(row=0, column=7, sticky="w", padx=ui(4))
 
         f_exp = ttk.Frame(f_tiempos, style="Params.TFrame")
         f_exp.pack(fill="x", pady=(ui(4), ui(2)))
@@ -106,7 +104,6 @@ class PanelEjeIluminacion(ttk.Frame):
             f_exp,
             text=(
                 "• Espera encendido previo (s): Tiempo transcurrido con el LED encendido antes de que el SMU inicie el barrido I-V.\n"
-                "• Espera estabilización óptica (s): Retardo tras modificar potencia o cambiar de canal LED para asentar la emisión.\n"
                 "• Tiempo enfriamiento/reposo (s): Tiempo con luz apagada entre medidas consecutivas para evitar sobrecalentamiento.\n"
                 "• Cada N medidas estructura: si se configura N=2, la lámpara se apaga durante el tiempo de espera cada dos estructuras medidas en la misma combinación LED; N=0 desactiva este enfriado por bloque.\n"
                 "• Tiempo espera cada N medidas (s): duración concreta del apagado / reposo que se aplica cuando se alcanza el umbral de N medidas."

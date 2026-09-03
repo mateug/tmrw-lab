@@ -162,7 +162,7 @@ BLOQUE_ESTRUCTURA = {
         "puerto_serie": "COM4",
         "baudrate": 115200,
         "estructuras": ["A", "B"],
-        "espera_estabilizacion_s": 0.5,
+        "espera_conmutacion_s": 0.5,
     },
 }
 

@@ -7,23 +7,23 @@ from apps.lite.plan_engine import build_lite_plan
 def test_build_lite_plan_expands_only_structures_and_preserves_order():
     df = pd.DataFrame([
         {
-            "motor_lineal_step": 10,
-            "motor_lineal_stop": 20,
-            "motor_inclinacion_step": 0,
-            "motor_inclinacion_stop": 0,
-            "motor_rotacion_step": 0,
-            "motor_rotacion_stop": 0,
+            "lineal step": 10,
+            "lineal stop": 20,
+            "rotacion step": 45,
+            "rotacion stop": 90,
+            "inclinacion step": 30,
+            "inclinacion stop": 60,
             "650 nm": 0.5,
             "Warm white": 0,
             "Estructuras": "1, 2, 3",
         },
         {
-            "motor_lineal_step": 30,
-            "motor_lineal_stop": 40,
-            "motor_inclinacion_step": 0,
-            "motor_inclinacion_stop": 0,
-            "motor_rotacion_step": 0,
-            "motor_rotacion_stop": 0,
+            "lineal step": 0,
+            "lineal stop": 0,
+            "rotacion step": 0,
+            "rotacion stop": 0,
+            "inclinacion step": 0,
+            "inclinacion stop": 0,
             "650 nm": 1.0,
             "Warm white": 0.25,
             "Estructuras": "3,6",
@@ -32,13 +32,15 @@ def test_build_lite_plan_expands_only_structures_and_preserves_order():
 
     plan = build_lite_plan(df)
 
-    assert plan.measure_count == 5
+    assert plan.measure_count == 83
     assert [step["estructura"] for step in plan.steps] == [
-        "Estructura 1", "Estructura 2", "Estructura 3", "Estructura 3", "Estructura 6"
+        *(["Estructura 1", "Estructura 2", "Estructura 3"] * 27),
+        "Estructura 3", "Estructura 6",
     ]
-    assert plan.active_axes == frozenset({"motor_lineal", "led", "estructura"})
-    assert plan.steps[0]["motores"]["motor_lineal"] == {"step": 10.0, "stop": 20.0}
-    assert plan.steps[0]["leds"] == {"650": 50.0}
+    assert plan.active_axes == frozenset({"motor_lineal", "motor_inclinacion", "motor_rotacion", "led", "estructura"})
+    assert plan.steps[0]["motores"]["motor_lineal"]["pasos"] == 0
+    assert plan.steps[1]["motores"]["motor_lineal"]["pasos"] == 0
+    assert plan.steps[0]["leds"] == {"650": 50.0, "warm_white": 0.0}
     assert plan.steps[-1]["leds"] == {"650": 100.0, "warm_white": 25.0}
 
 
@@ -66,10 +68,23 @@ def test_build_lite_plan_rejects_invalid_unit_interval_led(value):
 
 
 def test_build_lite_plan_rejects_partial_motor_pair():
-    df = pd.DataFrame([{"motor_lineal_step": 10, "motor_lineal_stop": 0}])
+    df = pd.DataFrame([{"lineal step": 10, "lineal stop": 0}])
 
     with pytest.raises(ValueError, match="motor_lineal"):
         build_lite_plan(df)
+
+
+def test_build_lite_plan_reads_reference_headers():
+    df = pd.read_excel("referencia.xlsx", sheet_name="Tabla")
+
+    plan = build_lite_plan(df, valores_en_tanto_por_uno=False)
+
+    assert plan.measure_count == 11 * 5 * 11 * 7
+    assert plan.steps[0]["estructura"] == "Estructura 1"
+    assert plan.steps[0]["leds"] == {"660": 50.0, "730": 50.0}
+    assert plan.steps[-1]["motores"]["motor_lineal"]["valor"] == 6500.0
+    assert plan.steps[-1]["motores"]["motor_inclinacion"]["valor"] == 180.0
+    assert plan.steps[-1]["motores"]["motor_rotacion"]["valor"] == 5.0
 
 
 def test_build_lite_plan_rejects_structure_outside_relay_range():

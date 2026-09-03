@@ -3,16 +3,29 @@ from __future__ import annotations
 
 import math
 import re
+import itertools
 from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
 
+from core.instrument.motors.motor_lineal import construir_barrido_pasos
+from core.utils import sanitizar_nombre_archivo
+
 
 MOTOR_COLUMNS = {
-    "motor_lineal": ("motor_lineal_step", "motor_lineal_stop"),
-    "motor_inclinacion": ("motor_inclinacion_step", "motor_inclinacion_stop"),
-    "motor_rotacion": ("motor_rotacion_step", "motor_rotacion_stop"),
+    "motor_lineal": ("lineal_step", "lineal_stop"),
+    "motor_inclinacion": ("inclinacion_step", "inclinacion_stop"),
+    "motor_rotacion": ("rotacion_step", "rotacion_stop"),
+}
+
+MOTOR_COLUMN_ALIASES = {
+    "motor_lineal_step": "lineal_step",
+    "motor_lineal_stop": "lineal_stop",
+    "motor_inclinacion_step": "inclinacion_step",
+    "motor_inclinacion_stop": "inclinacion_stop",
+    "motor_rotacion_step": "rotacion_step",
+    "motor_rotacion_stop": "rotacion_stop",
 }
 
 LED_ALIASES = {
@@ -92,6 +105,7 @@ def _resolve_columns(df: pd.DataFrame) -> tuple[dict[str, str], list[str]]:
                 raise ValueError("La receta solo puede tener una columna de estructuras.")
             resolved["estructura"] = str(original)
             continue
+        header = MOTOR_COLUMN_ALIASES.get(header, header)
         if header in MOTOR_COLUMNS:
             raise ValueError(f"Encabezado incompleto de motor: '{original}'. Usa step o stop.")
         for motor, pair in MOTOR_COLUMNS.items():
@@ -105,6 +119,61 @@ def _resolve_columns(df: pd.DataFrame) -> tuple[dict[str, str], list[str]]:
     if not resolved and not led_columns:
         raise ValueError("El Excel no contiene columnas reconocibles de motores, LEDs o estructuras.")
     return resolved, led_columns
+
+
+def _validar_medio_grado(value: float, label: str) -> None:
+    if value < 0 or value > 360 or not math.isclose(value * 2, round(value * 2), abs_tol=1e-9):
+        raise ValueError(f"'{label}' debe estar entre 0 y 360 grados, en incrementos de 0.5.")
+
+
+def _posiciones_motor(motor: str, step: float, stop: float, row_number: int) -> list[dict[str, float]]:
+    if step == 0 and stop == 0:
+        return []
+    if step == 0 or stop == 0:
+        raise ValueError(f"Fila {row_number}: '{motor}' requiere step y stop, o ambos a cero.")
+
+    if motor == "motor_lineal":
+        pasos = construir_barrido_pasos(step, stop)
+        return [{"pasos": int(posicion), "valor": float(posicion), "unidad": "pasos"} for posicion in pasos]
+
+    _validar_medio_grado(step, f"{motor} step")
+    _validar_medio_grado(stop, f"{motor} stop")
+    if step <= 0:
+        raise ValueError(f"Fila {row_number}: '{motor} step' debe ser mayor que cero.")
+    if not math.isclose(stop / step, round(stop / step), abs_tol=1e-9):
+        raise ValueError(f"Fila {row_number}: '{motor} stop' debe ser múltiplo de 'step'.")
+    posiciones = [step * indice for indice in range(int(round(stop / step)) + 1)]
+    return [{"pasos": int(round(posicion * 2)), "valor": posicion, "unidad": "deg"} for posicion in posiciones]
+
+
+def construir_nombre_iteracion_lite(nombre_base: str, step: dict[str, Any]) -> str:
+    partes = [sanitizar_nombre_archivo(nombre_base)]
+    if step.get("estructura"):
+        partes.append(sanitizar_nombre_archivo(step["estructura"]))
+
+    leds = [
+        f"{canal}nm_{float(intensidad):03.0f}pct" if str(canal).isdigit()
+        else f"{sanitizar_nombre_archivo(canal)}_{float(intensidad):03.0f}pct"
+        for canal, intensidad in step.get("leds", {}).items()
+    ]
+    if leds:
+        partes.append("-".join(leds))
+
+    motores = []
+    for motor, posicion in step.get("motores", {}).items():
+        etiqueta = {
+            "motor_lineal": "lineal",
+            "motor_inclinacion": "inclinacion",
+            "motor_rotacion": "rotacion",
+        }[motor]
+        unidad = "mm" if motor == "motor_lineal" else "deg"
+        valor = posicion["valor"]
+        if motor == "motor_lineal":
+            valor = valor * float(step.get("resolucion_lineal_mm_paso", 0.00128))
+        motores.append(f"{etiqueta}_{float(valor):.3f}{unidad}")
+    if motores:
+        partes.append("-".join(motores))
+    return "__".join(partes)
 
 
 def _led_channel_from_header(header: str) -> str | None:
@@ -170,8 +239,14 @@ def build_lite_plan(df: pd.DataFrame, valores_en_tanto_por_uno: bool = True) -> 
                 continue
             if step == 0 or stop == 0:
                 raise ValueError(f"Fila {row_index + 2}: '{motor}' requiere step y stop, o ambos a cero.")
-            active_axes.add(motor)
-            motor_values[row_index][motor] = {"step": step, "stop": stop}
+            posiciones = _posiciones_motor(motor, step, stop, row_index + 2)
+            if posiciones:
+                active_axes.add(motor)
+            motor_values[row_index][motor] = {
+                "step": step,
+                "stop": stop,
+                "posiciones": posiciones,
+            }
 
         led_values[row_index] = {}
         for column in led_columns:
@@ -185,7 +260,7 @@ def build_lite_plan(df: pd.DataFrame, valores_en_tanto_por_uno: bool = True) -> 
                 intensity *= 100
             elif intensity < 0 or intensity > 100:
                 raise ValueError(f"Fila {row_index + 2}: '{column}' debe estar entre 0 y 100.")
-            if intensity:
+            if intensity or not _is_empty(value):
                 active_axes.add("led")
                 led_values[row_index][_led_channel_from_header(_canonical_header(column))] = intensity
 
@@ -196,16 +271,27 @@ def build_lite_plan(df: pd.DataFrame, valores_en_tanto_por_uno: bool = True) -> 
         structures = _parse_structures(row.get(structure_column) if structure_column else None, row_index + 2)
         if structures:
             active_axes.add("estructura")
-        for structure in structures or [None]:
-            if structure and structure not in structures_seen:
-                structures_seen.append(structure)
-            steps.append({
-                "fila_excel": row_index + 2,
-                "estructura": structure,
-                "motores": motor_values[row_index],
-                "leds": led_values[row_index],
-                "valores_originales": row.to_dict(),
-            })
+        motor_axes = {
+            motor: values["posiciones"]
+            for motor, values in motor_values[row_index].items()
+            if values["posiciones"]
+        }
+        combinaciones_motor = itertools.product(*motor_axes.values()) if motor_axes else [()]
+        for combinacion_motor in combinaciones_motor:
+            motores = dict(zip(motor_axes, combinacion_motor))
+            for structure in structures or [None]:
+                if structure and structure not in structures_seen:
+                    structures_seen.append(structure)
+                step = {
+                    "fila_excel": row_index + 2,
+                    "estructura": structure,
+                    "motores": motores,
+                    "leds": led_values[row_index],
+                    "valores_originales": row.to_dict(),
+                    "resolucion_lineal_mm_paso": 0.00128,
+                }
+                step["nombre_iteracion"] = construir_nombre_iteracion_lite("medida_lite", step)
+                steps.append(step)
     if not steps:
         raise ValueError("La receta no contiene ninguna medida válida.")
     return LitePlan(tuple(steps), frozenset(active_axes), tuple(structures_seen), tuple(map(str, df.columns)))
