@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from apps.lite.plan_engine import build_lite_plan
+from apps.lite.plan_engine import build_lite_plan, insertar_enfriamientos_lite
 
 
 def test_build_lite_plan_expands_only_structures_and_preserves_order():
@@ -59,6 +59,16 @@ def test_build_lite_plan_ignores_zero_structure_ids():
 
     assert [step["estructura"] for step in plan.steps] == ["Estructura 2"]
     assert plan.active_axes == frozenset({"estructura"})
+
+
+def test_insertar_enfriamientos_lite_usa_medidas_de_estructuras():
+    plan = build_lite_plan(pd.DataFrame([{"Estructura": "1, 2, 3"}]))
+
+    plan = insertar_enfriamientos_lite(plan, cada_n_medidas=2, tiempo_s=30)
+
+    assert plan.measure_count == 3
+    assert [step.get("tipo", "medida") for step in plan.steps] == ["medida", "medida", "enfriar", "medida"]
+    assert plan.steps[2]["duracion_s"] == 30
 
 
 @pytest.mark.parametrize("value", ["x", 1.1, -0.1])

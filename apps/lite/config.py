@@ -25,6 +25,7 @@ CONFIG_LITE_DEFAULT = {
     "espera_luz_encendida_s": 0.0,
     "espera_motor_s": 0.0,
     "tiempo_enfriado_s": 0.0,
+    "cada_n_medidas_estructura": 0,
     "apagar_al_final": True,
 }
 

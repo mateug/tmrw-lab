@@ -55,7 +55,7 @@ class LitePlan:
 
     @property
     def measure_count(self) -> int:
-        return len(self.steps)
+        return sum(step.get("tipo", "medida") == "medida" for step in self.steps)
 
 
 def _is_empty(value: Any) -> bool:
@@ -277,9 +277,9 @@ def build_lite_plan(df: pd.DataFrame, valores_en_tanto_por_uno: bool = True) -> 
             if values["posiciones"]
         }
         combinaciones_motor = itertools.product(*motor_axes.values()) if motor_axes else [()]
-        for combinacion_motor in combinaciones_motor:
+        for combinacion_idx, combinacion_motor in enumerate(combinaciones_motor):
             motores = dict(zip(motor_axes, combinacion_motor))
-            for structure in structures or [None]:
+            for orden_estructura, structure in enumerate(structures or [None], start=1):
                 if structure and structure not in structures_seen:
                     structures_seen.append(structure)
                 step = {
@@ -289,9 +289,43 @@ def build_lite_plan(df: pd.DataFrame, valores_en_tanto_por_uno: bool = True) -> 
                     "leds": led_values[row_index],
                     "valores_originales": row.to_dict(),
                     "resolucion_lineal_mm_paso": 0.00128,
+                    "grupo_estructura": (row_index, combinacion_idx),
+                    "orden_estructura": orden_estructura,
                 }
                 step["nombre_iteracion"] = construir_nombre_iteracion_lite("medida_lite", step)
                 steps.append(step)
     if not steps:
         raise ValueError("La receta no contiene ninguna medida válida.")
     return LitePlan(tuple(steps), frozenset(active_axes), tuple(structures_seen), tuple(map(str, df.columns)))
+
+
+def insertar_enfriamientos_lite(plan: LitePlan, cada_n_medidas: int, tiempo_s: float) -> LitePlan:
+    """Inserta enfriamientos entre estructuras dentro de cada combinación de receta."""
+    cada_n = max(0, int(cada_n_medidas or 0))
+    tiempo = max(0.0, float(tiempo_s or 0.0))
+    if cada_n == 0 or tiempo == 0.0:
+        return plan
+
+    pasos: list[dict[str, Any]] = []
+    for indice, step in enumerate(plan.steps):
+        pasos.append(step)
+        orden = step.get("orden_estructura")
+        grupo = step.get("grupo_estructura")
+        if (
+            step.get("tipo", "medida") == "medida"
+            and step.get("estructura") is not None
+            and grupo is not None
+            and orden is not None
+            and orden % cada_n == 0
+            and any(
+                candidato.get("grupo_estructura") == grupo
+                for candidato in plan.steps[indice + 1:]
+            )
+        ):
+            pasos.append({
+                "tipo": "enfriar",
+                "grupo_estructura": grupo,
+                "duracion_s": tiempo,
+                "accion": "apagar_luz",
+            })
+    return LitePlan(tuple(pasos), plan.active_axes, plan.structures, plan.columns)

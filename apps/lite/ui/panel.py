@@ -30,7 +30,7 @@ from core.ui_kit.shared import (
 from core.ui_kit.theme import theme_mgr
 
 from apps.lite.config import get_default_config
-from apps.lite.plan_engine import LitePlan, build_lite_plan, construir_nombre_iteracion_lite
+from apps.lite.plan_engine import LitePlan, build_lite_plan, construir_nombre_iteracion_lite, insertar_enfriamientos_lite
 from core.postprocess.data import guardar_resumen_studio_excel
 
 
@@ -121,6 +121,7 @@ class LiteFrame(ttk.Frame):
             "espera_conmutacion_s": tk.StringVar(value=str(estructura_cfg.get("espera_conmutacion_s", estructura_cfg.get("espera_estabilizacion_s", 0.5)))),
             "espera_motor_s": tk.StringVar(value=str(c.get("espera_motor_s", 0.0))),
             "tiempo_enfriado_s": tk.StringVar(value=str(c.get("tiempo_enfriado_s", 0.0))),
+            "cada_n_medidas_estructura": tk.StringVar(value=str(c.get("cada_n_medidas_estructura", 0))),
             "apagar_al_final": tk.BooleanVar(value=c.get("apagar_al_final", True)),
         }
 
@@ -245,8 +246,11 @@ class LiteFrame(ttk.Frame):
             fields.append(("Espera motor (s):", "espera_motor_s", "Tiempo de asentamiento después de mover el motor."))
         if "estructura" in active_axes:
             fields.append(("Espera conmutación (s):", "espera_conmutacion_s", "Tiempo después de cambiar la estructura."))
-        if len(self._plan_lite.steps) > 1 if self._plan_lite else False:
-            fields.append(("Enfriamiento entre medidas (s):", "tiempo_enfriado_s", "Tiempo con los LEDs apagados entre medidas."))
+        if "estructura" in active_axes and len(self._plan_lite.steps) > 1 if self._plan_lite else False:
+            fields.extend([
+                ("Medidas de estructuras antes de enfriar:", "cada_n_medidas_estructura", "Número de medidas de estructuras antes de apagar los LEDs."),
+                ("Enfriamiento entre medidas (s):", "tiempo_enfriado_s", "Tiempo con los LEDs apagados entre medidas."),
+            ])
         if not fields:
             ttk.Label(self.f_tiempos, text="Carga una receta para mostrar los tiempos necesarios.", style="Params.TLabel").pack(anchor="w")
             return
@@ -367,6 +371,7 @@ class LiteFrame(ttk.Frame):
         cfg["espera_luz_encendida_s"] = float(v["espera_luz_on_s"].get() or 0.0)
         cfg["espera_motor_s"] = float(v["espera_motor_s"].get() or 0.0)
         cfg["tiempo_enfriado_s"] = float(v["tiempo_enfriado_s"].get() or 0.0)
+        cfg["cada_n_medidas_estructura"] = int(v["cada_n_medidas_estructura"].get() or 0)
         cfg["apagar_al_final"] = v["apagar_al_final"].get()
 
         cfg["barrido_motor_activo"] = any(axis.startswith("motor_") for axis in (self._plan_lite.active_axes if self._plan_lite else ()))
@@ -498,8 +503,13 @@ class LiteFrame(ttk.Frame):
         self.evento_aborto.clear()
         self.btn_iniciar.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
-        self.txt_log.insert("end", f"\n>>> INICIANDO EJECUCIÓN DE RECETA ({self._plan_lite.measure_count} medidas)...\n")
-        threading.Thread(target=self._hilo_receta, args=(cfg, self._plan_lite), daemon=True).start()
+        plan = insertar_enfriamientos_lite(
+            self._plan_lite,
+            cfg["cada_n_medidas_estructura"],
+            cfg["tiempo_enfriado_s"],
+        )
+        self.txt_log.insert("end", f"\n>>> INICIANDO EJECUCIÓN DE RECETA ({plan.measure_count} medidas)...\n")
+        threading.Thread(target=self._hilo_receta, args=(cfg, plan), daemon=True).start()
 
     def _esperar_abortable(self, segundos):
         limite = time.monotonic() + max(0.0, float(segundos))
@@ -537,6 +547,12 @@ class LiteFrame(ttk.Frame):
             for index, step in enumerate(plan.steps, 1):
                 if self.evento_aborto.is_set():
                     raise RuntimeError("Secuencia abortada por el usuario.")
+                if step.get("tipo") == "enfriar":
+                    if simulador:
+                        simulador.apagar()
+                    self.cola_ui.put(("log", f"[{index}/{len(plan.steps)}] Enfriando durante {step['duracion_s']} s\n"))
+                    self._esperar_abortable(step["duracion_s"])
+                    continue
                 self.cola_ui.put(("log", f"[{index}/{plan.measure_count}] Fila Excel {step['fila_excel']}: preparando medida\n"))
                 nombre_estructura = self._nombres_estructuras.get(
                     step.get("estructura"), tk.StringVar(value=step.get("estructura") or "")
@@ -583,10 +599,6 @@ class LiteFrame(ttk.Frame):
                 if "FF" in rfv:
                     fila["FF (%)"] = float(rfv["FF"]) * 100.0
                 filas_resumen.append(fila)
-                if index < plan.measure_count:
-                    if simulador:
-                        simulador.apagar()
-                    self._esperar_abortable(cfg.get("tiempo_enfriado_s", 0.0))
             if filas_resumen:
                 ruta_resumen = guardar_resumen_studio_excel(cfg, filas_resumen)
                 self.cola_ui.put(("log", f"Resumen combinado guardado en: {ruta_resumen}\n"))
