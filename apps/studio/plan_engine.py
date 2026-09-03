@@ -14,6 +14,7 @@ from core.instrument.motors.motor_lineal import (
     validar_configuracion_motor,
 )
 from core.instrument.solar_simulator import normalizar_canal_ossila
+from core.utils import sanitizar_nombre_archivo
 
 
 def _expandir_combinacion_canales(canales: list, relaciones: list) -> list:
@@ -103,6 +104,15 @@ def construir_barrido(v_ini, v_fin, paso):
     return np.arange(v_ini, v_fin + signo * paso / 2, signo * paso)
 
 
+def construir_barrido_decreciente(v_extremo_a, v_extremo_b, paso):
+    """Construye un barrido desde la tensión mayor hasta la menor."""
+    return construir_barrido(
+        max(float(v_extremo_a), float(v_extremo_b)),
+        min(float(v_extremo_a), float(v_extremo_b)),
+        paso,
+    )
+
+
 def construir_segmento_desde_tensiones(nombre, tensiones, paso):
     tensiones = np.asarray(tensiones, dtype=float)
     if tensiones.size == 0:
@@ -135,7 +145,7 @@ def normalizar_segmento(nombre, cfg_segmento, modo_medida, cfg_directa=None):
     else:
         raise ValueError(f"Segmento desconocido: {nombre}")
 
-    tensiones = construir_barrido(v_ini, v_fin, paso)
+    tensiones = construir_barrido_decreciente(v_ini, v_fin, paso)
     return {
         "segmento": nombre,
         "v_inicial_V": float(v_ini),
@@ -166,8 +176,8 @@ def construir_plan_medida(cfg):
         if paso_directa <= 0 or paso_inversa <= 0:
             raise ValueError("Los pasos de tensión deben ser positivos.")
 
-        tensiones_directa = construir_barrido(v_directa_final, v_union, paso_directa)
-        tensiones_inversa = construir_barrido(v_union, v_inversa_final, paso_inversa)
+        tensiones_directa = construir_barrido_decreciente(v_directa_final, v_union, paso_directa)
+        tensiones_inversa = construir_barrido_decreciente(v_union, v_inversa_final, paso_inversa)
 
         segmentos = []
         directa = construir_segmento_desde_tensiones("directa", tensiones_directa, paso_directa)
@@ -348,19 +358,70 @@ def construir_eje_motor(cfg: dict) -> list[dict]:
         posiciones_pasos = validar_configuracion_motor({**cfg, "motor": eje_cfg})
         if posiciones_pasos.size == 0:
             continue
-        resolucion = float(eje_cfg.get("resolucion_mm_paso", cfg["motor"].get("resolucion_mm_paso", 0.00128)))
+        if motor["eje"] == "lineal":
+            resolucion = float(eje_cfg.get("resolucion_mm_paso", cfg["motor"].get("resolucion_mm_paso", 0.00128)))
+        else:
+            resolucion = float(eje_cfg.get(
+                "resolucion_deg_paso",
+                eje_cfg.get("resolucion_mm_paso", 0.00128),
+            ))
         for p in posiciones_pasos:
             posiciones.append({
                 "motor_activo": True,
                 "eje": motor["eje"],
                 "posicion_pasos": int(p),
                 "posicion_mm": float(p * resolucion),
+                "posicion_fisica": float(p * resolucion),
+                "unidad_fisica": "mm" if motor["eje"] == "lineal" else "deg",
             })
 
     if not posiciones:
         return [{"motor_activo": False, "eje": None, "posicion_pasos": 0, "posicion_mm": 0.0}]
 
     return posiciones
+
+
+def _formatear_valor_nombre(valor: float) -> str:
+    return f"{float(valor):.3f}"
+
+
+def _etiqueta_canal_nombre(canal) -> str:
+    canal = str(canal)
+    return f"{canal}nm" if canal.isdigit() else canal
+
+
+def construir_nombre_iteracion(nombre_base: str, paso: dict) -> str:
+    """Compone un nombre estable con únicamente los ejes activos del paso."""
+    partes = [sanitizar_nombre_archivo(nombre_base)]
+
+    estructura = paso.get("estructura")
+    if estructura:
+        partes.append(sanitizar_nombre_archivo(estructura))
+
+    solar_modo = paso.get("solar_modo")
+    solar = paso.get("solar_params") or {}
+    if solar_modo == "potencia":
+        partes.append(f"potencia_{_formatear_valor_nombre(solar.get('potencia_mW_cm2', 0))}mWcm2")
+    elif solar_modo == "longitud_onda":
+        partes.append(
+            f"{sanitizar_nombre_archivo(_etiqueta_canal_nombre(solar.get('canal', 'led')))}_"
+            f"{float(solar.get('intensidad_pct', 0)):03.0f}pct"
+        )
+    elif solar_modo == "combinacion":
+        leds = [
+            f"{sanitizar_nombre_archivo(_etiqueta_canal_nombre(canal))}_{float(intensidad):03.0f}pct"
+            for canal, intensidad in zip(solar.get("canales", []), solar.get("intensidades", []))
+        ]
+        if leds:
+            partes.append("-".join(leds))
+
+    if paso.get("motor_activo"):
+        eje = paso.get("eje")
+        valor = paso.get("posicion_fisica", paso.get("posicion_mm", 0.0))
+        unidad = paso.get("unidad_fisica", "mm")
+        partes.append(f"{eje}_{_formatear_valor_nombre(valor)}{unidad}")
+
+    return "__".join(partes)
 
 
 def construir_eje_estructura(cfg: dict) -> list[dict]:
@@ -440,11 +501,15 @@ def generar_plan_estudio(cfg: dict) -> list[dict]:
                     "motor_activo": mot_info["motor_activo"],
                     "posicion_motor_pasos": mot_info["posicion_pasos"],
                     "posicion_motor_mm": mot_info["posicion_mm"],
+                    "posicion_motor_fisica": mot_info.get("posicion_fisica", mot_info["posicion_mm"]),
+                    "posicion_motor_unidad": mot_info.get("unidad_fisica"),
+                    "eje_motor": mot_info.get("eje"),
                     "solar_modo": led_info["solar_modo"],
                     "solar_params": led_info["solar_params"],
                     "keithley": keithley_cfg,
                     "orden_estructura": medida_idx,
                 })
+                plan[-1]["nombre_iteracion"] = construir_nombre_iteracion(cfg["nombre_medida"], plan[-1])
 
                 if cd_medidas and cd_tiempo and medida_idx % cd_medidas == 0 and medida_idx < len(estructuras_seleccionadas):
                     plan.append({

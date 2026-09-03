@@ -48,6 +48,13 @@ class PanelEjeEstructura(ttk.Frame):
         f_cfg = ttk.LabelFrame(f_layout, text=" Configuración Keithley por estructura ", padding=ui(6), style="Params.TLabelframe")
         f_cfg.pack(side="right", fill="both", expand=True)
 
+        ttk.Button(
+            f_cfg,
+            text="Copiar configuración del primer Keithley a todos",
+            command=self._copiar_configuracion_keithley,
+            style="Tool.TButton",
+        ).pack(anchor="w", padx=ui(6), pady=(0, ui(4)))
+
         self.canvas_cfg = tk.Canvas(f_cfg, height=220, bg="#f8fafc", highlightthickness=0)
         self.scrollbar_cfg = ttk.Scrollbar(f_cfg, orient="vertical", command=self.canvas_cfg.yview)
         self.canvas_cfg.configure(yscrollcommand=self.scrollbar_cfg.set)
@@ -129,6 +136,20 @@ class PanelEjeEstructura(ttk.Frame):
     def _on_estructura_toggle(self):
         self._sincronizar_lista_estructuras()
         self._render_configuracion_keithley()
+
+    def _copiar_configuracion_keithley(self):
+        seleccionadas = [
+            nombre for nombre, var in self.vars["estructura_seleccionadas_dict"].items()
+            if var.get()
+        ]
+        if len(seleccionadas) < 2:
+            return
+
+        origen = self.vars["estructura_keithley_vars"][seleccionadas[0]]
+        for nombre in seleccionadas[1:]:
+            destino = self.vars["estructura_keithley_vars"][nombre]
+            for clave, variable in origen.items():
+                destino[clave].set(variable.get())
 
     def _render_configuracion_keithley(self):
         for w in self.cfg_frame.winfo_children():

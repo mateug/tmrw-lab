@@ -19,6 +19,11 @@ def construir_barrido(v_inicial_V: float, v_final_V: float, paso_V: float) -> np
         tensiones[-1] = final
     return tensiones
 
+def construir_barrido_decreciente(v_extremo_a: float, v_extremo_b: float, paso_V: float) -> np.ndarray:
+    """Construye un barrido desde la tensión mayor hasta la menor."""
+    return construir_barrido(max(float(v_extremo_a), float(v_extremo_b)),
+                             min(float(v_extremo_a), float(v_extremo_b)), paso_V)
+
 def construir_plan_medida(cfg: dict) -> list[dict]:
     """Devuelve segmentos directos/inversos sin abrir una conexión VISA."""
     modo = str(cfg["modo_medida"]).lower().strip()
@@ -26,7 +31,7 @@ def construir_plan_medida(cfg: dict) -> list[dict]:
     if modo not in {"directa", "inversa", "completa"}:
         raise ValueError("modo_medida debe ser directa, inversa o completa.")
     def segmento(nombre: str, inicio: float, final: float, paso: float) -> dict:
-        return {"segmento": nombre, "tensiones_V": construir_barrido(inicio, final, paso)}
+        return {"segmento": nombre, "tensiones_V": construir_barrido_decreciente(inicio, final, paso)}
     v0 = float(directa["v_inicial_mV"]) * 1e-3
     directa_seg = segmento("directa", float(directa["v_final_mV"]) * 1e-3, v0, float(directa["paso_mV"]) * 1e-3)
     vi = v0 if inversa["v_inicial_mV"] is None else float(inversa["v_inicial_mV"]) * 1e-3

@@ -6,6 +6,7 @@ Orquesta las medidas I-V con Keithley 2450 y la combinación de ejes activos
 from __future__ import annotations
 
 import queue
+import copy
 import threading
 import time
 import tkinter as tk
@@ -24,6 +25,7 @@ from core.ui_kit.theme import theme_mgr
 
 from apps.studio.config import get_default_config
 from apps.studio.plan_engine import generar_plan_estudio
+from core.postprocess.data import guardar_resumen_studio_excel
 from apps.studio.ui.panel_medida import crear_panel_medida_fijo
 from apps.studio.ui.panel_motor import PanelEjesMotor
 from apps.studio.ui.panel_led import PanelEjeIluminacion
@@ -109,7 +111,7 @@ class StudioFrame(ttk.Frame):
             "motor_inclinacion_baudrate": tk.StringVar(value=str(m.get("inclinacion", {}).get("baudrate", 115200))),
             "motor_inclinacion_step_pasos": tk.StringVar(value=str(m.get("inclinacion", {}).get("step_pasos", -625))),
             "motor_inclinacion_stop_pasos": tk.StringVar(value=str(m.get("inclinacion", {}).get("stop_pasos", -62500))),
-            "motor_inclinacion_resolucion_mm_paso": tk.StringVar(value=str(m.get("inclinacion", {}).get("resolucion_mm_paso", 0.00128))),
+            "motor_inclinacion_resolucion_deg_paso": tk.StringVar(value=str(m.get("inclinacion", {}).get("resolucion_deg_paso", m.get("inclinacion", {}).get("resolucion_mm_paso", 0.00128)))),
             "motor_inclinacion_espera_s": tk.StringVar(value=str(m.get("inclinacion", {}).get("espera_estabilizacion_s", 0.0))),
             "motor_inclinacion_poner_cero_conectar": tk.BooleanVar(value=m.get("inclinacion", {}).get("poner_cero_al_conectar", True)),
             "motor_inclinacion_volver_cero_final": tk.BooleanVar(value=m.get("inclinacion", {}).get("volver_cero_al_final", False)),
@@ -118,7 +120,7 @@ class StudioFrame(ttk.Frame):
             "motor_rotacion_baudrate": tk.StringVar(value=str(m.get("rotacion", {}).get("baudrate", 115200))),
             "motor_rotacion_step_pasos": tk.StringVar(value=str(m.get("rotacion", {}).get("step_pasos", -625))),
             "motor_rotacion_stop_pasos": tk.StringVar(value=str(m.get("rotacion", {}).get("stop_pasos", -62500))),
-            "motor_rotacion_resolucion_mm_paso": tk.StringVar(value=str(m.get("rotacion", {}).get("resolucion_mm_paso", 0.00128))),
+            "motor_rotacion_resolucion_deg_paso": tk.StringVar(value=str(m.get("rotacion", {}).get("resolucion_deg_paso", m.get("rotacion", {}).get("resolucion_mm_paso", 0.00128)))),
             "motor_rotacion_espera_s": tk.StringVar(value=str(m.get("rotacion", {}).get("espera_estabilizacion_s", 0.0))),
             "motor_rotacion_poner_cero_conectar": tk.BooleanVar(value=m.get("rotacion", {}).get("poner_cero_al_conectar", True)),
             "motor_rotacion_volver_cero_final": tk.BooleanVar(value=m.get("rotacion", {}).get("volver_cero_al_final", False)),
@@ -356,7 +358,7 @@ class StudioFrame(ttk.Frame):
             "baudrate": int(v["motor_inclinacion_baudrate"].get() or 115200),
             "step_pasos": int(v["motor_inclinacion_step_pasos"].get() or -625),
             "stop_pasos": int(v["motor_inclinacion_stop_pasos"].get() or -62500),
-            "resolucion_mm_paso": float(v["motor_inclinacion_resolucion_mm_paso"].get() or 0.00128),
+            "resolucion_deg_paso": float(v["motor_inclinacion_resolucion_deg_paso"].get() or 0.00128),
             "espera_estabilizacion_s": float(v["motor_inclinacion_espera_s"].get() or 0.0),
             "poner_cero_al_conectar": v["motor_inclinacion_poner_cero_conectar"].get(),
             "volver_cero_al_final": v["motor_inclinacion_volver_cero_final"].get(),
@@ -367,7 +369,7 @@ class StudioFrame(ttk.Frame):
             "baudrate": int(v["motor_rotacion_baudrate"].get() or 115200),
             "step_pasos": int(v["motor_rotacion_step_pasos"].get() or -625),
             "stop_pasos": int(v["motor_rotacion_stop_pasos"].get() or -62500),
-            "resolucion_mm_paso": float(v["motor_rotacion_resolucion_mm_paso"].get() or 0.00128),
+            "resolucion_deg_paso": float(v["motor_rotacion_resolucion_deg_paso"].get() or 0.00128),
             "espera_estabilizacion_s": float(v["motor_rotacion_espera_s"].get() or 0.0),
             "poner_cero_al_conectar": v["motor_rotacion_poner_cero_conectar"].get(),
             "volver_cero_al_final": v["motor_rotacion_volver_cero_final"].get(),
@@ -653,6 +655,8 @@ class StudioFrame(ttk.Frame):
     def _hilo_secuencia(self, cfg, plan):
         rele = None
         simulador = None
+        filas_resumen = []
+        nombres_usados = set()
         try:
             if cfg.get("eje_estructura_activo", False):
                 rele = crear_rele_estructura(cfg, self.evento_aborto)
@@ -678,8 +682,55 @@ class StudioFrame(ttk.Frame):
                     cfg_local = self._configurar_medida_estructura(
                         cfg, estructura, keithley_cfg
                     )
+                    cfg_local = copy.deepcopy(cfg_local)
+                    nombre_iteracion = paso.get("nombre_iteracion", cfg.get("nombre_medida", "medida_studio"))
+                    if nombre_iteracion in nombres_usados:
+                        nombre_iteracion = f"{nombre_iteracion}__iter_{idx:03d}"
+                    nombres_usados.add(nombre_iteracion)
+                    cfg_local["nombre_medida"] = nombre_iteracion
                     from core.measure.run_keithley import run as run_keithley_medida
-                    run_keithley_medida(cfg_local)
+                    resultado = run_keithley_medida(cfg_local)
+                    fila = {
+                        "Iteración": idx,
+                        "Nombre iteración": nombre_iteracion,
+                        "Estructura": estructura,
+                        "Estado": resultado.get("estado_medida"),
+                        "Puntos": resultado.get("puntos_medidos"),
+                    }
+                    eje = paso.get("eje_motor")
+                    valor_motor = paso.get("posicion_motor_fisica")
+                    if eje == "lineal":
+                        fila["Motor lineal (mm)"] = valor_motor
+                    elif eje == "inclinacion":
+                        fila["Inclinación (deg)"] = valor_motor
+                    elif eje == "rotacion":
+                        fila["Rotación (deg)"] = valor_motor
+
+                    solar_modo = paso.get("solar_modo")
+                    solar = paso.get("solar_params") or {}
+                    if solar_modo == "potencia":
+                        fila["Irradiancia (mW/cm^2)"] = solar.get("potencia_mW_cm2")
+                    elif solar_modo == "longitud_onda":
+                        fila[f"LED {solar.get('canal')} (%)"] = solar.get("intensidad_pct")
+                    elif solar_modo == "combinacion":
+                        for canal, intensidad in zip(solar.get("canales", []), solar.get("intensidades", [])):
+                            fila[f"LED {canal} (%)"] = intensidad
+
+                    rfv = resultado.get("resultados_fv") or {}
+                    for clave, valor in rfv.items():
+                        if clave in {"Isc_unidad", "Isc_adapt", "Imp_unidad", "Imp_adapt", "Pmax_unidad", "Pmax_adapt"}:
+                            continue
+                        if clave.endswith("_V"):
+                            fila[clave[:-2] + " (V)"] = valor
+                        elif clave.endswith("_A"):
+                            fila[clave[:-2] + " (A)"] = valor
+                        elif clave.endswith("_W"):
+                            fila[clave[:-2] + " (W)"] = valor
+                        elif clave == "FF":
+                            fila["FF (%)"] = float(valor) * 100.0
+                        elif clave == "Eff":
+                            fila["Eff (%)"] = valor
+                    filas_resumen.append(fila)
                     time.sleep(0.1)
                 elif paso.get("tipo") == "enfriar":
                     self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Enfriamiento LED: apagando fuente durante {paso.get('duracion_s', 0.0)} s\n"))
@@ -692,6 +743,10 @@ class StudioFrame(ttk.Frame):
                 else:
                     self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando paso: {paso}\n"))
                     time.sleep(0.1)
+
+            if filas_resumen:
+                ruta_resumen = guardar_resumen_studio_excel(cfg, filas_resumen)
+                self.cola_ui.put(("log", f"Resumen combinado guardado en: {ruta_resumen}\n"))
 
             self.cola_ui.put(("log", "\n[✓] Secuencia finalizada con éxito.\n"))
         except Exception as exc:

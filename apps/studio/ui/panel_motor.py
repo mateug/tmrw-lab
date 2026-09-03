@@ -106,8 +106,10 @@ class PanelEjesMotor(ttk.Frame):
         ttk.Entry(f_p2, textvariable=self.vars[f"{prefijo}_step_pasos"], width=10).pack(side="left", padx=(ui(2), ui(10)))
         ttk.Label(f_p2, text="Stop (pasos):", style="Params.TLabel").pack(side="left")
         ttk.Entry(f_p2, textvariable=self.vars[f"{prefijo}_stop_pasos"], width=10).pack(side="left", padx=(ui(2), ui(10)))
-        ttk.Label(f_p2, text="Resolución (mm/paso):", style="Params.TLabel").pack(side="left")
-        ttk.Entry(f_p2, textvariable=self.vars[f"{prefijo}_resolucion_mm_paso"], width=10).pack(side="left", padx=(ui(2), ui(10)))
+        unidad_resolucion = "mm/paso" if eje_key == "lineal" else "deg/paso"
+        clave_resolucion = f"{prefijo}_resolucion_mm_paso" if eje_key == "lineal" else f"{prefijo}_resolucion_deg_paso"
+        ttk.Label(f_p2, text=f"Resolución ({unidad_resolucion}):", style="Params.TLabel").pack(side="left")
+        ttk.Entry(f_p2, textvariable=self.vars[clave_resolucion], width=10).pack(side="left", padx=(ui(2), ui(10)))
         ttk.Label(f_p2, text="Espera estabilización (s):", style="Params.TLabel").pack(side="left")
         ttk.Entry(f_p2, textvariable=self.vars[f"{prefijo}_espera_s"], width=8).pack(side="left", padx=(ui(2), ui(6)))
 

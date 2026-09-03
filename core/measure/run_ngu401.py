@@ -88,6 +88,19 @@ def construir_barrido(
     return tensiones
 
 
+def construir_barrido_decreciente(
+    v_extremo_a: float,
+    v_extremo_b: float,
+    paso_V: float,
+) -> np.ndarray:
+    """Construye un barrido desde la tensión mayor hasta la menor."""
+    return construir_barrido(
+        max(float(v_extremo_a), float(v_extremo_b)),
+        min(float(v_extremo_a), float(v_extremo_b)),
+        paso_V,
+    )
+
+
 def construir_plan_medida(cfg: dict) -> list[dict]:
 
     modo = (
@@ -119,7 +132,7 @@ def construir_plan_medida(cfg: dict) -> list[dict]:
 
         return {
             "segmento": nombre,
-            "tensiones_V": construir_barrido(
+            "tensiones_V": construir_barrido_decreciente(
                 inicio,
                 final,
                 paso,

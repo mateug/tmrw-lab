@@ -388,6 +388,57 @@ def guardar_resumen_barrido_motor_excel(cfg_base, filas_resumen):
     return str(ruta.resolve())
 
 
+def guardar_resumen_studio_excel(cfg_base, filas_resumen):
+    """Guarda el resumen multieje de Studio en una única hoja sin rutas."""
+    if not filas_resumen:
+        return None
+
+    ruta_base, _ = construir_rutas_salida(cfg_base)
+    ruta = ruta_base.with_name(f"{ruta_base.stem}__resumen_combinado.xlsx")
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+
+    filas_limpias = [
+        fila for fila in filas_resumen
+        if any(valor is not None and not (isinstance(valor, float) and np.isnan(valor))
+               for valor in fila.values())
+    ]
+    filas_normalizadas = normalizar_unidades_filas_resumen(filas_limpias)
+
+    columnas_base = [
+        "Iteración", "Nombre iteración", "Estructura", "Motor lineal (mm)",
+        "Inclinación (deg)", "Rotación (deg)", "Irradiancia (mW/cm^2)",
+        "Estado", "Puntos",
+    ]
+    columnas_led = sorted({
+        clave for fila in filas_normalizadas for clave in fila
+        if str(clave).startswith("LED ") and str(clave).endswith(" (%)")
+    })
+    columnas_fv = [
+        clave for fila in filas_normalizadas for clave in fila
+        if clave not in columnas_base
+        and clave not in columnas_led
+        and clave not in {"Archivo Excel", "Archivo PNG", "ruta_excel", "rutas_figuras"}
+        and "ruta" not in str(clave).lower()
+        and "archivo" not in str(clave).lower()
+    ]
+    columnas_fv = list(dict.fromkeys(columnas_fv))
+    columnas = columnas_base[:3] + columnas_led + columnas_base[3:] + columnas_fv
+    filas = [{columna: fila.get(columna) for columna in columnas} for fila in filas_normalizadas]
+    filas = [
+        fila for fila in filas
+        if any(valor is not None and not (isinstance(valor, float) and np.isnan(valor))
+               for valor in fila.values())
+    ]
+
+    eliminar_archivo_previo(ruta)
+    with pd.ExcelWriter(ruta, engine="openpyxl") as writer:
+        pd.DataFrame(filas, columns=columnas).to_excel(
+            writer, sheet_name="resumen_studio", index=False
+        )
+
+    return str(ruta.resolve())
+
+
 def guardar_resumen_irradiancia_excel(cfg_base, filas_resumen):
     if not filas_resumen:
         return None

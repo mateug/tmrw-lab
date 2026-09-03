@@ -40,6 +40,15 @@ def construir_barrido(v_ini, v_fin, paso):
     return np.arange(v_ini, v_fin + signo * paso / 2, signo * paso)
 
 
+def construir_barrido_decreciente(v_extremo_a, v_extremo_b, paso):
+    """Construye un barrido desde la tensión mayor hasta la menor."""
+    return construir_barrido(
+        max(float(v_extremo_a), float(v_extremo_b)),
+        min(float(v_extremo_a), float(v_extremo_b)),
+        paso,
+    )
+
+
 def construir_segmento_desde_tensiones(nombre, tensiones, paso):
     tensiones = np.asarray(tensiones, dtype=float)
     if tensiones.size == 0:
@@ -72,7 +81,7 @@ def normalizar_segmento(nombre, cfg_segmento, modo_medida, cfg_directa=None):
     else:
         raise ValueError(f"Segmento desconocido: {nombre}")
 
-    tensiones = construir_barrido(v_ini, v_fin, paso)
+    tensiones = construir_barrido_decreciente(v_ini, v_fin, paso)
     return {
         "segmento": nombre,
         "v_inicial_V": float(v_ini),
@@ -103,8 +112,8 @@ def construir_plan_medida(cfg):
         if paso_directa <= 0 or paso_inversa <= 0:
             raise ValueError("Los pasos de tensión deben ser positivos.")
 
-        tensiones_directa = construir_barrido(v_directa_final, v_union, paso_directa)
-        tensiones_inversa = construir_barrido(v_union, v_inversa_final, paso_inversa)
+        tensiones_directa = construir_barrido_decreciente(v_directa_final, v_union, paso_directa)
+        tensiones_inversa = construir_barrido_decreciente(v_union, v_inversa_final, paso_inversa)
 
         segmentos = []
         directa = construir_segmento_desde_tensiones("directa", tensiones_directa, paso_directa)
