@@ -167,9 +167,9 @@ class LiteFrame(ttk.Frame):
 
         # [2] Control de Medición
         f_ctrl_sec = crear_seccion_frame(col_izq, "[2] Control de Medición", "control")
-        f_ctrl_sec.pack(fill="x", pady=ui(4))
+        f_ctrl_sec.pack(fill="x", pady=ui(1))
         f_ctrl = ttk.Frame(f_ctrl_sec, style="Control.TFrame")
-        f_ctrl.pack(fill="x", padx=ui(4), pady=ui(4))
+        f_ctrl.pack(fill="x", padx=ui(4), pady=ui(2))
         self.btn_iniciar = ttk.Button(f_ctrl, text="▶ INICIAR MEDIDA DE RECETA", style="Primary.TButton", command=self._on_iniciar, state="disabled")
         self.btn_iniciar.pack(side="left", padx=ui(4))
         self.btn_abortar = ttk.Button(f_ctrl, text="⏹ DETENER / ABORTAR", style="Danger.TButton", command=self._on_abortar, state="disabled")
@@ -316,16 +316,25 @@ class LiteFrame(ttk.Frame):
         common = ttk.LabelFrame(self.keithley_frame, text=" Barrido I-V común ", padding=ui(6), style="Params.TLabelframe")
         common.pack(fill="x", padx=ui(4), pady=ui(4))
         common_fields = [
-            ("V ini directa (mV):", "v_ini_dir"), ("V fin directa (mV):", "v_fin_dir"),
-            ("Paso directa (mV):", "paso_dir"), ("V fin inversa (V):", "v_fin_inv"),
-            ("Paso inversa (mV):", "paso_inv"), ("Superficie (um2):", "superficie_um2"),
-            ("Irradiancia (mW/cm2):", "irradiancia_mW_cm2"),
+            ("I máx (uA):", "i_max_uA"), ("V ini directa (mV):", "v_ini_dir"),
+            ("V fin directa (mV):", "v_fin_dir"), ("Paso directa (mV):", "paso_dir"),
+            ("V fin inversa (V):", "v_fin_inv"), ("Paso inversa (mV):", "paso_inv"),
+            ("Superficie (um2):", "superficie_um2"), ("Irradiancia (mW/cm2):", "irradiancia_mW_cm2"),
         ]
         for index, (label, variable) in enumerate(common_fields):
             row, column = divmod(index, 4)
             ttk.Label(common, text=label, style="Keithley.TLabel").grid(row=row, column=column * 2, sticky="w", padx=ui(3), pady=ui(2))
             ttk.Entry(common, textvariable=self.vars[variable], width=10).grid(row=row, column=column * 2 + 1, sticky="w", padx=ui(3), pady=ui(2))
-        ttk.Checkbutton(common, text="Sense 4 hilos", variable=self.vars["medir_tension_real"], style="Keithley.TCheckbutton").grid(row=2, column=0, sticky="w", padx=ui(3), pady=ui(2))
+        ttk.Label(common, text="Modo:", style="Keithley.TLabel").grid(row=2, column=4, sticky="w", padx=ui(3), pady=ui(2))
+        ttk.Combobox(
+            common,
+            textvariable=self.vars["modo_medida"],
+            values=["completa", "directa", "inversa"],
+            state="readonly",
+            width=11,
+        ).grid(row=2, column=5, sticky="w", padx=ui(3), pady=ui(2))
+        ttk.Checkbutton(common, text="Invertir eje Y", variable=self.vars["invertir_eje_y"], style="Keithley.TCheckbutton").grid(row=2, column=0, sticky="w", padx=ui(3), pady=ui(2))
+        ttk.Checkbutton(common, text="Sense 4 hilos", variable=self.vars["medir_tension_real"], style="Keithley.TCheckbutton").grid(row=2, column=2, sticky="w", padx=ui(3), pady=ui(2))
         for structure in structures:
             nombre_var = self._nombres_estructuras.setdefault(
                 structure, tk.StringVar(value=structure)
@@ -339,6 +348,8 @@ class LiteFrame(ttk.Frame):
                 "paso_mV": tk.StringVar(value=self.vars["paso_dir"].get()),
                 "v_final_inversa_V": tk.StringVar(value=self.vars["v_fin_inv"].get()),
                 "paso_inversa_mV": tk.StringVar(value=self.vars["paso_inv"].get()),
+                "superficie_um2": tk.StringVar(value=self.vars["superficie_um2"].get()),
+                "irradiancia_mW_cm2": tk.StringVar(value=self.vars["irradiancia_mW_cm2"].get()),
                 "invertir_eje_y": tk.BooleanVar(value=self.vars["invertir_eje_y"].get()),
             })
             block = ttk.LabelFrame(self.keithley_frame, text=f" {structure} ", padding=ui(6), style="Params.TLabelframe")
@@ -359,13 +370,27 @@ class LiteFrame(ttk.Frame):
             for label, key in (("V ini dir (mV)", "v_inicial_mV"), ("V fin dir (mV)", "v_final_mV"), ("Paso dir (mV)", "paso_mV"), ("V fin inv (V)", "v_final_inversa_V"), ("Paso inv (mV)", "paso_inversa_mV")):
                 ttk.Label(detail, text=f"{label}:", style="Keithley.TLabel").pack(side="left", padx=(ui(3), ui(2)))
                 ttk.Entry(detail, textvariable=values[key], width=8).pack(side="left", padx=(0, ui(6)))
+            for label, key in (("Superficie (um2)", "superficie_um2"), ("Irradiancia (mW/cm2)", "irradiancia_mW_cm2")):
+                ttk.Label(detail, text=f"{label}:", style="Keithley.TLabel").pack(side="left", padx=(ui(3), ui(2)))
+                ttk.Entry(detail, textvariable=values[key], width=10).pack(side="left", padx=(0, ui(6)))
         self.canvas_keithley.configure(scrollregion=self.canvas_keithley.bbox("all"))
 
     def _copiar_configuracion_keithley(self):
         estructuras = tuple(self._estructuras_keithley)
         if len(estructuras) < 2:
             return
-        origen = self._estructuras_keithley[estructuras[0]]
+        origen = {
+            "modo_medida": self.vars["modo_medida"],
+            "i_max_uA": self.vars["i_max_uA"],
+            "v_inicial_mV": self.vars["v_ini_dir"],
+            "v_final_mV": self.vars["v_fin_dir"],
+            "paso_mV": self.vars["paso_dir"],
+            "v_final_inversa_V": self.vars["v_fin_inv"],
+            "paso_inversa_mV": self.vars["paso_inv"],
+            "superficie_um2": self.vars["superficie_um2"],
+            "irradiancia_mW_cm2": self.vars["irradiancia_mW_cm2"],
+            "invertir_eje_y": self.vars["invertir_eje_y"],
+        }
         for estructura in estructuras[1:]:
             destino = self._estructuras_keithley[estructura]
             for clave, variable in origen.items():
@@ -414,7 +439,7 @@ class LiteFrame(ttk.Frame):
         cfg["estructura"]["espera_conmutacion_s"] = float(self.vars["espera_conmutacion_s"].get() or 0.0)
         cfg["estructura"]["keithley_por_estructura"] = {
             (self._nombres_estructuras.get(name, tk.StringVar(value=name)).get().strip() or name): {
-                "recurso_visa": values["recurso_visa"].get().strip(),
+                "recurso_visa": cfg["recurso_visa"],
                 "modo_medida": values["modo_medida"].get().strip(),
                 "i_max_uA": float(values["i_max_uA"].get() or 10.0),
                 "v_inicial_mV": float(values["v_inicial_mV"].get() or 0.0),
@@ -422,6 +447,8 @@ class LiteFrame(ttk.Frame):
                 "paso_mV": float(values["paso_mV"].get() or 10.0),
                 "v_final_inversa_V": float(values["v_final_inversa_V"].get() or -11.0),
                 "paso_inversa_mV": float(values["paso_inversa_mV"].get() or 100.0),
+                "superficie_um2": float(values["superficie_um2"].get()) if values["superficie_um2"].get() else None,
+                "irradiancia_mW_cm2": float(values["irradiancia_mW_cm2"].get()) if values["irradiancia_mW_cm2"].get() else None,
                 "invertir_eje_y": bool(values["invertir_eje_y"].get()),
             }
             for name, values in self._estructuras_keithley.items()

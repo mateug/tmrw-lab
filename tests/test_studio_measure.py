@@ -8,6 +8,7 @@ from core.instrument.keithley import (
     liberar_control_manual_keithley,
     recuperar_control_automatico_keithley,
 )
+from core.measure.keithley_config import construir_configuracion_keithley
 
 
 class FakeInstrument:
@@ -82,6 +83,22 @@ class StudioMeasureTests(unittest.TestCase):
         local["grafica_callback"]("datos", local)
         self.assertEqual(self.frame.cola_ui.get(), ("log", "mensaje"))
         self.assertEqual(self.frame.cola_ui.get(), ("grafica", ("datos", local)))
+
+    def test_configuracion_por_estructura_aplica_superficie_e_irradiancia(self):
+        cfg = {
+            "recurso_visa": "GPIB0::1::INSTR",
+            "i_max_uA": 10.0,
+            "superficie_um2": None,
+            "irradiancia_mW_cm2": None,
+        }
+
+        local = construir_configuracion_keithley(
+            cfg,
+            overrides={"superficie_um2": 2500.0, "irradiancia_mW_cm2": 12.5},
+        )
+
+        self.assertEqual(local["superficie_um2"], 2500.0)
+        self.assertEqual(local["irradiancia_mW_cm2"], 12.5)
 
     @patch("core.instrument.keithley.enviar_go_to_local_visa")
     @patch("core.instrument.keithley.conectar_y_verificar")

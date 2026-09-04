@@ -26,6 +26,18 @@ def construir_configuracion_keithley(
     ).strip() or "completa"
     cfg["i_max_uA"] = float(overrides.get("i_max_uA", cfg.get("i_max_uA", 10.0)))
     cfg["i_max_A"] = cfg["i_max_uA"] * 1e-6
+    if "superficie_um2" in overrides:
+        cfg["superficie_um2"] = (
+            float(overrides["superficie_um2"])
+            if overrides["superficie_um2"] not in (None, "")
+            else None
+        )
+    if "irradiancia_mW_cm2" in overrides:
+        cfg["irradiancia_mW_cm2"] = (
+            float(overrides["irradiancia_mW_cm2"])
+            if overrides["irradiancia_mW_cm2"] not in (None, "")
+            else None
+        )
     cfg["recurso_visa"] = str(cfg_base.get("recurso_visa", "AUTO")).strip() or "AUTO"
     cfg["invertir_eje_y_graficas"] = bool(
         overrides.get("invertir_eje_y", cfg.get("invertir_eje_y_graficas", True))
