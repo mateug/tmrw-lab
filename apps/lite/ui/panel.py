@@ -103,6 +103,7 @@ class LiteFrame(ttk.Frame):
     def _inicializar_variables(self):
         c = self.cfg_base
         estructura_cfg = c.get("estructura", {})
+        motor_cfg = c.get("motor", {})
         self.vars = {
             # Guardado de Datos (al principio)
             "carpeta_salida": tk.StringVar(value=c.get("carpeta_salida", "")),
@@ -132,6 +133,17 @@ class LiteFrame(ttk.Frame):
             "tiempo_enfriado_s": tk.StringVar(value=str(c.get("tiempo_enfriado_s", 0.0))),
             "cada_n_medidas_estructura": tk.StringVar(value=str(c.get("cada_n_medidas_estructura", 0))),
             "apagar_al_final": tk.BooleanVar(value=c.get("apagar_al_final", True)),
+            # Comunicaciones de los ejes detectados en la receta.
+            "motor_lineal_puerto": tk.StringVar(value=str(motor_cfg.get("puerto_serie", "COM4"))),
+            "motor_lineal_baudrate": tk.StringVar(value=str(motor_cfg.get("baudrate", 115200))),
+            "motor_inclinacion_puerto": tk.StringVar(value=str(motor_cfg.get("inclinacion", {}).get("puerto_serie", "COM5"))),
+            "motor_inclinacion_baudrate": tk.StringVar(value=str(motor_cfg.get("inclinacion", {}).get("baudrate", 115200))),
+            "motor_rotacion_puerto": tk.StringVar(value=str(motor_cfg.get("rotacion", {}).get("puerto_serie", "COM6"))),
+            "motor_rotacion_baudrate": tk.StringVar(value=str(motor_cfg.get("rotacion", {}).get("baudrate", 115200))),
+            "solar_puerto": tk.StringVar(value=str(c.get("simulador_solar", {}).get("puerto_serie", "COM3"))),
+            "solar_baudrate": tk.StringVar(value=str(c.get("simulador_solar", {}).get("baudrate", 9600))),
+            "estructura_puerto": tk.StringVar(value=str(estructura_cfg.get("puerto_serie", "COM5"))),
+            "estructura_baudrate": tk.StringVar(value=str(estructura_cfg.get("baudrate", 115200))),
         }
 
     def _crear_ui(self):
@@ -211,6 +223,14 @@ class LiteFrame(ttk.Frame):
         self.f_tiempos = ttk.LabelFrame(f_receta, text=" Control de Tiempos Aplicable ", padding=ui(4), style="Params.TLabelframe")
         self.f_tiempos.pack(fill="x", padx=ui(6), pady=ui(3))
         self._render_tiempos(frozenset())
+        self.f_comunicaciones = ttk.LabelFrame(
+            f_receta,
+            text=" Comunicaciones de los ejes activos ",
+            padding=ui(4),
+            style="Params.TLabelframe",
+        )
+        self.f_comunicaciones.pack(fill="x", padx=ui(6), pady=ui(3))
+        self._render_comunicaciones(frozenset())
 
         # [4] Configuraciones Keithley por estructura detectada
         self.f_keithley = crear_seccion_frame(col_izq, "[4] Configuraciones del Keithley", "keithley")
@@ -308,6 +328,49 @@ class LiteFrame(ttk.Frame):
             variable=self.vars["apagar_al_final"],
             style="Params.TCheckbutton",
         ).pack(anchor="w", padx=ui(4), pady=(ui(3), 0))
+
+    def _render_comunicaciones(self, active_axes):
+        for child in self.f_comunicaciones.winfo_children():
+            child.destroy()
+
+        campos = []
+        if "led" in active_axes:
+            campos.append(("Simulador solar", "solar_puerto", "solar_baudrate"))
+        if "estructura" in active_axes:
+            campos.append(("Relé de estructuras", "estructura_puerto", "estructura_baudrate"))
+        etiquetas_motor = {
+            "motor_lineal": "Motor lineal",
+            "motor_inclinacion": "Motor de inclinación",
+            "motor_rotacion": "Motor de rotación",
+        }
+        for eje, etiqueta in etiquetas_motor.items():
+            if eje in active_axes:
+                campos.append((etiqueta, f"{eje}_puerto", f"{eje}_baudrate"))
+
+        if not campos:
+            ttk.Label(
+                self.f_comunicaciones,
+                text="Carga una receta para mostrar los puertos de los ejes activos.",
+                style="Params.TLabel",
+            ).pack(anchor="w", padx=ui(2), pady=ui(2))
+            return
+
+        for fila, (etiqueta, puerto_var, baudrate_var) in enumerate(campos):
+            ttk.Label(self.f_comunicaciones, text=f"{etiqueta}:", style="Params.TLabel").grid(
+                row=fila, column=0, sticky="w", padx=ui(3), pady=ui(2)
+            )
+            ttk.Label(self.f_comunicaciones, text="COM:", style="Params.TLabel").grid(
+                row=fila, column=1, sticky="e", padx=(ui(8), ui(2)), pady=ui(2)
+            )
+            ttk.Entry(self.f_comunicaciones, textvariable=self.vars[puerto_var], width=9).grid(
+                row=fila, column=2, sticky="w", padx=ui(2), pady=ui(2)
+            )
+            ttk.Label(self.f_comunicaciones, text="Baudrate:", style="Params.TLabel").grid(
+                row=fila, column=3, sticky="e", padx=(ui(8), ui(2)), pady=ui(2)
+            )
+            ttk.Entry(self.f_comunicaciones, textvariable=self.vars[baudrate_var], width=9).grid(
+                row=fila, column=4, sticky="w", padx=ui(2), pady=ui(2)
+            )
 
     def _render_configuraciones_keithley(self, structures):
         for child in self.keithley_frame.winfo_children():
@@ -427,9 +490,19 @@ class LiteFrame(ttk.Frame):
         cfg["cada_n_medidas_estructura"] = int(v["cada_n_medidas_estructura"].get() or 0)
         cfg["apagar_al_final"] = v["apagar_al_final"].get()
 
-        cfg["barrido_motor_activo"] = any(axis.startswith("motor_") for axis in (self._plan_lite.active_axes if self._plan_lite else ()))
-        cfg["simulador_solar_activo"] = "led" in (self._plan_lite.active_axes if self._plan_lite else ())
-        cfg["eje_estructura_activo"] = "estructura" in (self._plan_lite.active_axes if self._plan_lite else ())
+        active_axes = self._plan_lite.active_axes if self._plan_lite else frozenset()
+        cfg["barrido_motor_activo"] = any(axis.startswith("motor_") for axis in active_axes)
+        cfg["simulador_solar_activo"] = "led" in active_axes
+        cfg["eje_estructura_activo"] = "estructura" in active_axes
+        cfg["simulador_solar"]["puerto_serie"] = v["solar_puerto"].get().strip()
+        cfg["simulador_solar"]["baudrate"] = int(v["solar_baudrate"].get() or 9600)
+        cfg["estructura"]["puerto_serie"] = v["estructura_puerto"].get().strip()
+        cfg["estructura"]["baudrate"] = int(v["estructura_baudrate"].get() or 115200)
+        cfg["motor"]["puerto_serie"] = v["motor_lineal_puerto"].get().strip()
+        cfg["motor"]["baudrate"] = int(v["motor_lineal_baudrate"].get() or 115200)
+        for eje in ("inclinacion", "rotacion"):
+            cfg["motor"][eje]["puerto_serie"] = v[f"motor_{eje}_puerto"].get().strip()
+            cfg["motor"][eje]["baudrate"] = int(v[f"motor_{eje}_baudrate"].get() or 115200)
         cfg["estructura"]["estructuras"] = [
             self._nombres_estructuras.get(estructura, tk.StringVar(value=estructura)).get().strip() or estructura
             for estructura in (self._plan_lite.structures if self._plan_lite else [])
@@ -524,6 +597,7 @@ class LiteFrame(ttk.Frame):
                 )
             )
             self._render_tiempos(plan.active_axes)
+            self._render_comunicaciones(plan.active_axes)
             self._render_configuraciones_keithley(plan.structures or ("Medida única",))
 
             self.btn_iniciar.configure(state="normal")
@@ -628,7 +702,13 @@ class LiteFrame(ttk.Frame):
                     ejes_motor.update(step["motores"])
                 for eje in ejes_motor:
                     motor_cfg = dict(cfg.get("motor", {}))
-                    motor_cfg.update(cfg.get("motor", {}).get(eje, {}))
+                    clave_config = {
+                        "motor_lineal": None,
+                        "motor_inclinacion": "inclinacion",
+                        "motor_rotacion": "rotacion",
+                    }.get(eje)
+                    if clave_config is not None:
+                        motor_cfg.update(cfg.get("motor", {}).get(clave_config, {}))
                     controlador = crear_controlador_motor({"motor": motor_cfg}, self.evento_aborto)
                     controlador.connect()
                     motores[eje] = controlador
