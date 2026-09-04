@@ -13,6 +13,17 @@ from core.postprocess.analysis import calcular_voc_isc, calcular_mpp_y_ff, calcu
 from core.plot.plotter import representar_curvas_iv_pv
 from core.utils import emitir_log, formatear_resultados_fotovoltaicos
 from core.exceptions import LimiteCorrienteAlcanzado, MedidaAbortadaPorUsuario
+from core.measure.iv_plan import (
+    RANGOS_CORRIENTE_2450 as _RANGOS_CORRIENTE_2450,
+    RANGOS_TENSION_2450 as _RANGOS_TENSION_2450,
+    construir_barrido as _construir_barrido,
+    construir_barrido_decreciente as _construir_barrido_decreciente,
+    construir_plan_medida as _construir_plan_medida,
+    construir_segmento_desde_tensiones as _construir_segmento_desde_tensiones,
+    elegir_rango as _elegir_rango,
+    normalizar_segmento as _normalizar_segmento,
+    validar_segmentos_y_configuracion as _validar_segmentos_y_configuracion,
+)
 
 
 RANGOS_TENSION_2450 = np.array([0.02, 0.2, 2.0, 20.0, 200.0])
@@ -20,6 +31,10 @@ RANGOS_CORRIENTE_2450 = np.array([
     10e-9, 100e-9, 1e-6, 10e-6, 100e-6,
     1e-3, 10e-3, 100e-3, 1.0
 ])
+
+# Se mantienen los nombres historicos de este modulo como aliases publicos.
+RANGOS_TENSION_2450 = _RANGOS_TENSION_2450
+RANGOS_CORRIENTE_2450 = _RANGOS_CORRIENTE_2450
 
 
 def elegir_rango(valor_maximo, rangos_disponibles, nombre):
@@ -156,6 +171,16 @@ def validar_segmentos_y_configuracion(cfg, segmentos):
         seg["rango_corriente_A"] = rango_i
 
     return segmentos
+
+
+# La ejecución mantiene estos nombres para compatibilidad, pero usa el plan común.
+elegir_rango = _elegir_rango
+construir_barrido = _construir_barrido
+construir_barrido_decreciente = _construir_barrido_decreciente
+construir_segmento_desde_tensiones = _construir_segmento_desde_tensiones
+normalizar_segmento = _normalizar_segmento
+construir_plan_medida = _construir_plan_medida
+validar_segmentos_y_configuracion = _validar_segmentos_y_configuracion
 
 
 def aplicar_inversion_datos(df, invertir_eje_y=False):

@@ -30,7 +30,10 @@ from core.ui_kit.theme import theme_mgr
 
 from apps.studio.config import get_default_config
 from apps.studio.plan_engine import generar_plan_estudio
+from core.measure.keithley_config import construir_configuracion_keithley
 from core.postprocess.data import guardar_resumen_studio_excel
+from core.postprocess.summary import añadir_ejes_a_fila, construir_fila_resumen_medida
+from core.hardware_tests import probar_reles_estructura, probar_simulador_solar
 from apps.studio.ui.panel_medida import crear_panel_medida_fijo
 from apps.studio.ui.panel_motor import PanelEjesMotor
 from apps.studio.ui.panel_led import PanelEjeIluminacion
@@ -450,51 +453,12 @@ class StudioFrame(ttk.Frame):
         }
 
     def _configurar_medida_estructura(self, cfg, estructura, keithley_cfg=None):
-        cfg_local = dict(cfg)
-        cfg_local["estructura"] = dict(
-            cfg.get("estructura", {}),
-            estructuras=[estructura] if estructura else [],
+        return construir_configuracion_keithley(
+            cfg,
+            estructura=estructura,
+            overrides=keithley_cfg,
+            callbacks=self._callbacks_ui(),
         )
-        cfg_local["estructura"]["keithley_por_estructura"] = cfg.get(
-            "estructura", {}
-        ).get("keithley_por_estructura", {})
-        cfg_local.update(self._callbacks_ui())
-
-        if keithley_cfg:
-            cfg_local["modo_medida"] = str(
-                keithley_cfg.get("modo_medida", cfg.get("modo_medida", "directa"))
-            ).strip() or cfg.get("modo_medida", "directa")
-            cfg_local["i_max_uA"] = float(
-                keithley_cfg.get("i_max_uA", cfg.get("i_max_uA", 10.0))
-            )
-            cfg_local["i_max_A"] = cfg_local["i_max_uA"] * 1e-6
-            cfg_local["directa"] = dict(cfg.get("directa", {}))
-            cfg_local["directa"].update({
-                "v_inicial_mV": float(keithley_cfg.get(
-                    "v_inicial_mV", cfg_local["directa"].get("v_inicial_mV", 0.0)
-                )),
-                "v_final_mV": float(keithley_cfg.get(
-                    "v_final_mV", cfg_local["directa"].get("v_final_mV", 550.0)
-                )),
-                "paso_mV": float(keithley_cfg.get(
-                    "paso_mV", cfg_local["directa"].get("paso_mV", 10.0)
-                )),
-            })
-            cfg_local["inversa"] = dict(cfg.get("inversa", {}))
-            cfg_local["inversa"].update({
-                "v_final_V": float(keithley_cfg.get(
-                    "v_final_inversa_V", cfg_local["inversa"].get("v_final_V", -0.5)
-                )),
-                "paso_mV": float(keithley_cfg.get(
-                    "paso_inversa_mV", cfg_local["inversa"].get("paso_mV", 10.0)
-                )),
-            })
-            cfg_local["invertir_eje_y_graficas"] = bool(
-                keithley_cfg.get(
-                    "invertir_eje_y", cfg.get("invertir_eje_y_graficas", False)
-                )
-            )
-        return cfg_local
 
     def _conectar_smu_studio(self, cfg):
         """Conecta el Keithley 2450 usado por el modo Studio."""
@@ -659,35 +623,15 @@ class StudioFrame(ttk.Frame):
         threading.Thread(target=self._hilo_prueba_solar, args=(cfg,), daemon=True).start()
 
     def _hilo_prueba_solar(self, cfg):
-        simulador = None
         try:
-            simulador = crear_controlador_simulador_solar(
-                {**cfg, "simulador_solar_activo": True}, self.evento_aborto
+            probar_simulador_solar(
+                cfg,
+                self.evento_aborto,
+                lambda mensaje: self.cola_ui.put(("log", mensaje)),
             )
-            simulador.connect()
-            registrar_simulador_solar_activo(simulador)
-            self.cola_ui.put(("log", "[TEST] Encendiendo potencia: 100 mW/cm2\n"))
-            simulador.encender_y_verificar(100.0)
-            self._esperar_abortable(1.0)
-            canales = ["390", "450", "515", "cool_white", "warm_white", "600", "630", "660", "730", "850", "950"]
-            for index, canal in enumerate(canales, 1):
-                self._esperar_abortable(0.2)
-                simulador.apagar()
-                simulador.enviar_comando_personalizado(
-                    "<ch{channel}:{intensity}>", channel=canal, intensity=50
-                )
-                self.cola_ui.put(("log", f"[TEST] LED {index}/{len(canales)}: {canal} al 50%\n"))
-            simulador.apagar()
-            self.cola_ui.put(("log", "[OK] Prueba del simulador solar completada.\n"))
         except Exception as exc:
             self.cola_ui.put(("log", f"[ERROR] Prueba del simulador solar: {exc}\n"))
         finally:
-            if simulador is not None:
-                limpiar_simulador_solar_activo(simulador)
-                try:
-                    simulador.close()
-                except Exception:
-                    pass
             self.cola_ui.put(("fin_secuencia", None))
 
     def _esperar_abortable(self, segundos):
@@ -698,27 +642,16 @@ class StudioFrame(ttk.Frame):
             time.sleep(min(0.05, limite - time.monotonic()))
 
     def _hilo_prueba_hardware(self, cfg):
-        rele = None
         try:
-            estructuras = cfg.get("estructura", {}).get("estructuras") or ["Estructura 1", "Estructura 2"]
-            rele = crear_rele_estructura(cfg, self.evento_aborto)
-            rele.connect()
-            for nombre in estructuras:
-                if self.evento_aborto.is_set():
-                    raise RuntimeError("Prueba abortada por el usuario.")
-                letra = rele.select(nombre)
-                estado = rele.status()
-                self.cola_ui.put(("log", f"[TEST] Estructura seleccionada: {nombre} ({letra}); relés: {estado}\n"))
-                time.sleep(0.5)
-            self.cola_ui.put(("log", "[✓] Prueba de relés y estructuras completada correctamente.\n"))
+            probar_reles_estructura(
+                cfg,
+                self.evento_aborto,
+                lambda mensaje: self.cola_ui.put(("log", mensaje)),
+                pausa_s=0.5,
+            )
         except Exception as exc:
             self.cola_ui.put(("log", f"[ERROR] Prueba de relés/estructuras: {exc}\n"))
         finally:
-            if rele is not None:
-                try:
-                    rele.close()
-                except Exception:
-                    pass
             self.cola_ui.put(("fin_secuencia", None))
 
     def _hilo_secuencia(self, cfg, plan):
@@ -770,13 +703,9 @@ class StudioFrame(ttk.Frame):
                     cfg_local["nombre_medida"] = nombre_iteracion
                     from core.measure.run_keithley import run as run_keithley_medida
                     resultado = run_keithley_medida(cfg_local)
-                    fila = {
-                        "Iteración": idx,
-                        "Nombre iteración": nombre_iteracion,
-                        "Estructura": estructura,
-                        "Estado": resultado.get("estado_medida"),
-                        "Puntos": resultado.get("puntos_medidos"),
-                    }
+                    fila = construir_fila_resumen_medida(
+                        resultado, idx, nombre_iteracion, estructura
+                    )
                     eje = paso.get("eje_motor")
                     valor_motor = paso.get("posicion_motor_fisica")
                     if eje == "lineal":
@@ -786,8 +715,8 @@ class StudioFrame(ttk.Frame):
                     elif eje == "rotacion":
                         fila["Rotación (deg)"] = valor_motor
 
-                    solar_modo = paso.get("solar_modo")
                     solar = paso.get("solar_params") or {}
+                    solar_modo = paso.get("solar_modo")
                     if solar_modo == "potencia":
                         fila["Irradiancia (mW/cm^2)"] = solar.get("potencia_mW_cm2")
                     elif solar_modo == "longitud_onda":
@@ -796,20 +725,6 @@ class StudioFrame(ttk.Frame):
                         for canal, intensidad in zip(solar.get("canales", []), solar.get("intensidades", [])):
                             fila[f"LED {canal} (%)"] = intensidad
 
-                    rfv = resultado.get("resultados_fv") or {}
-                    for clave, valor in rfv.items():
-                        if clave in {"Isc_unidad", "Isc_adapt", "Imp_unidad", "Imp_adapt", "Pmax_unidad", "Pmax_adapt"}:
-                            continue
-                        if clave.endswith("_V"):
-                            fila[clave[:-2] + " (V)"] = valor
-                        elif clave.endswith("_A"):
-                            fila[clave[:-2] + " (A)"] = valor
-                        elif clave.endswith("_W"):
-                            fila[clave[:-2] + " (W)"] = valor
-                        elif clave == "FF":
-                            fila["FF (%)"] = float(valor) * 100.0
-                        elif clave == "Eff":
-                            fila["Eff (%)"] = valor
                     filas_resumen.append(fila)
                     time.sleep(0.1)
                 elif paso.get("tipo") == "enfriar":

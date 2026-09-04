@@ -7,6 +7,7 @@ from apps.studio.plan_engine import construir_nombre_iteracion, construir_plan_m
 from core.postprocess.data import guardar_resumen_studio_excel
 from apps.stress.plan_engine import construir_plan_medida as construir_plan_stress
 from core.measure.run_ngu401 import construir_plan_medida as construir_plan_ngu401
+from core.instrument.solar_simulator import etiquetar_canal_ossila
 
 
 def _build_cfg():
@@ -90,6 +91,25 @@ def test_construir_nombre_iteracion_usa_led_y_unidades_fisicas():
     )
 
     assert nombre == "medida__Estructura_1__950nm_100pct-660nm_050pct__inclinacion_15.000deg"
+
+
+def test_etiquetar_canal_ossila_usa_longitud_de_onda():
+    assert etiquetar_canal_ossila("11") == "950"
+    assert etiquetar_canal_ossila("8") == "660"
+    assert etiquetar_canal_ossila("cool_white") == "cool_white"
+
+
+def test_construir_nombre_iteracion_no_expone_canal_interno():
+    nombre = construir_nombre_iteracion(
+        "medida",
+        {
+            "solar_modo": "longitud_onda",
+            "solar_params": {"canal": "11", "intensidad_pct": 50},
+            "motor_activo": False,
+        },
+    )
+
+    assert nombre == "medida__950nm_050pct"
 
 
 def test_guardar_resumen_studio_excel_es_una_hoja_sin_rutas(tmp_path):

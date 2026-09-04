@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from core.instrument.motors.motor_lineal import construir_barrido_pasos
+from core.instrument.solar_simulator import etiquetar_canal_ossila
 from core.utils import sanitizar_nombre_archivo
 
 
@@ -151,11 +152,11 @@ def construir_nombre_iteracion_lite(nombre_base: str, step: dict[str, Any]) -> s
     if step.get("estructura"):
         partes.append(sanitizar_nombre_archivo(step["estructura"]))
 
-    leds = [
-        f"{canal}nm_{float(intensidad):03.0f}pct" if str(canal).isdigit()
-        else f"{sanitizar_nombre_archivo(canal)}_{float(intensidad):03.0f}pct"
-        for canal, intensidad in step.get("leds", {}).items()
-    ]
+    leds = []
+    for canal, intensidad in step.get("leds", {}).items():
+        etiqueta = etiquetar_canal_ossila(canal)
+        nombre_canal = f"{etiqueta}nm" if etiqueta.isdigit() else sanitizar_nombre_archivo(etiqueta)
+        leds.append(f"{nombre_canal}_{float(intensidad):03.0f}pct")
     if leds:
         partes.append("-".join(leds))
 

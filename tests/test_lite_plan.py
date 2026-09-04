@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from apps.lite.plan_engine import build_lite_plan, insertar_enfriamientos_lite
+from apps.lite.plan_engine import build_lite_plan, construir_nombre_iteracion_lite, insertar_enfriamientos_lite
 
 
 def test_build_lite_plan_expands_only_structures_and_preserves_order():
@@ -52,6 +52,15 @@ def test_build_lite_plan_allows_no_structure_axis():
     assert plan.measure_count == 1
     assert plan.steps[0]["estructura"] is None
     assert plan.active_axes == frozenset({"led"})
+
+
+def test_construir_nombre_iteracion_lite_usa_longitud_de_onda():
+    nombre = construir_nombre_iteracion_lite(
+        "medida_lite",
+        {"leds": {"11": 50, "8": 25, "cool_white": 100}, "motores": {}},
+    )
+
+    assert nombre == "medida_lite__950nm_050pct-660nm_025pct-cool_white_100pct"
 
 
 def test_build_lite_plan_ignores_zero_structure_ids():

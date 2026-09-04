@@ -30,6 +30,20 @@ ossila_CANALES_LED = {
     "950 nm": "11",
 }
 
+ossila_LONGITUDES_DE_OLA = {
+    "1": "390",
+    "2": "450",
+    "3": "515",
+    "4": "cool_white",
+    "5": "warm_white",
+    "6": "600",
+    "7": "630",
+    "8": "660",
+    "9": "730",
+    "10": "850",
+    "11": "950",
+}
+
 
 def normalizar_canal_ossila(canal):
     """Convierte longitudes de onda conocidas al numero de canal ossila/Ossila."""
@@ -40,6 +54,12 @@ def normalizar_canal_ossila(canal):
     if texto_lower.startswith("ch") and texto_lower[2:].strip().isdigit():
         return texto_lower[2:].strip()
     return ossila_CANALES_LED.get(texto_lower, texto)
+
+
+def etiquetar_canal_ossila(canal):
+    """Devuelve la longitud de onda visible para usar en nombres y etiquetas."""
+    canal_normalizado = normalizar_canal_ossila(canal)
+    return ossila_LONGITUDES_DE_OLA.get(str(canal_normalizado), str(canal_normalizado))
 
 
 class ControladorSimuladorSolarOssila:

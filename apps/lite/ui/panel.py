@@ -36,7 +36,10 @@ from core.ui_kit.theme import theme_mgr
 
 from apps.lite.config import get_default_config
 from apps.lite.plan_engine import LitePlan, build_lite_plan, construir_nombre_iteracion_lite, insertar_enfriamientos_lite
+from core.measure.keithley_config import construir_configuracion_keithley
 from core.postprocess.data import guardar_resumen_studio_excel
+from core.postprocess.summary import añadir_ejes_a_fila, construir_fila_resumen_medida
+from core.hardware_tests import probar_reles_estructura, probar_simulador_solar
 
 
 def parsear_excel_receta(ruta_excel: Path, nombre_hoja: str = "") -> tuple[pd.DataFrame, dict[str, list[str]], list[dict]]:
@@ -416,33 +419,24 @@ class LiteFrame(ttk.Frame):
         return cfg
 
     def _configurar_medida_lite(self, cfg, step):
-        local = copy.deepcopy(cfg)
-        local["directa"] = dict(cfg.get("directa", {}))
-        local["inversa"] = dict(cfg.get("inversa", {}))
         estructura = step.get("estructura")
         nombre_estructura = self._nombres_estructuras.get(
             estructura, tk.StringVar(value=estructura or "")
         ).get().strip() or estructura
-        local["estructura"] = dict(cfg.get("estructura", {}), estructuras=[nombre_estructura] if nombre_estructura else [])
         estructura_cfg = cfg.get("estructura", {}).get("keithley_por_estructura", {}).get(estructura, {})
         if nombre_estructura:
             estructura_cfg = cfg.get("estructura", {}).get("keithley_por_estructura", {}).get(nombre_estructura, estructura_cfg)
         if not estructura_cfg and estructura is None:
             estructura_cfg = cfg.get("estructura", {}).get("keithley_por_estructura", {}).get("Medida única", {})
-        local["modo_medida"] = estructura_cfg.get("modo_medida", cfg.get("modo_medida", "completa"))
-        local["i_max_uA"] = float(estructura_cfg.get("i_max_uA", cfg.get("i_max_uA", 10.0)))
-        local["i_max_A"] = local["i_max_uA"] * 1e-6
-        local["recurso_visa"] = estructura_cfg.get("recurso_visa", cfg.get("recurso_visa", "AUTO"))
-        local["invertir_eje_y_graficas"] = bool(estructura_cfg.get("invertir_eje_y", cfg.get("invertir_eje_y_graficas", True)))
-        local["directa"].update({
-            "v_inicial_mV": float(estructura_cfg.get("v_inicial_mV", local["directa"].get("v_inicial_mV", 0.0))),
-            "v_final_mV": float(estructura_cfg.get("v_final_mV", local["directa"].get("v_final_mV", 550.0))),
-            "paso_mV": float(estructura_cfg.get("paso_mV", local["directa"].get("paso_mV", 10.0))),
-        })
-        local["inversa"].update({
-            "v_final_V": float(estructura_cfg.get("v_final_inversa_V", local["inversa"].get("v_final_V", -11.0))),
-            "paso_mV": float(estructura_cfg.get("paso_inversa_mV", local["inversa"].get("paso_mV", 100.0))),
-        })
+        local = construir_configuracion_keithley(
+            cfg,
+            estructura=nombre_estructura,
+            overrides=estructura_cfg,
+            callbacks={
+                "log_callback": lambda message: self.cola_ui.put(("log", str(message))),
+                "grafica_callback": lambda data, graph_cfg: self.cola_ui.put(("grafica", (data, graph_cfg))),
+            },
+        )
         step = dict(step)
         step["estructura"] = nombre_estructura
         step["resolucion_lineal_mm_paso"] = float(
@@ -451,8 +445,6 @@ class LiteFrame(ttk.Frame):
         local["nombre_medida"] = construir_nombre_iteracion_lite(
             cfg.get("nombre_medida", "medida_lite"), step
         )
-        local["log_callback"] = lambda message: self.cola_ui.put(("log", str(message)))
-        local["grafica_callback"] = lambda data, graph_cfg: self.cola_ui.put(("grafica", (data, graph_cfg)))
         return local
 
     def _on_examinar_excel(self):
@@ -541,37 +533,16 @@ class LiteFrame(ttk.Frame):
         threading.Thread(target=self._hilo_prueba_solar, args=(cfg,), daemon=True).start()
 
     def _hilo_prueba_solar(self, cfg):
-        simulador = None
         try:
-            simulador = crear_controlador_simulador_solar(
-                {**cfg, "simulador_solar_activo": True}, self.evento_aborto
+            probar_simulador_solar(
+                cfg,
+                self.evento_aborto,
+                lambda mensaje: self.cola_ui.put(("log", mensaje)),
+                cfg.get("plantilla_comando_excel", "<ch{channel}:{intensity}>"),
             )
-            simulador.connect()
-            registrar_simulador_solar_activo(simulador)
-            self.cola_ui.put(("log", "[TEST] Encendiendo potencia: 100 mW/cm2\n"))
-            simulador.encender_y_verificar(100.0)
-            self._esperar_abortable(1.0)
-            canales = ["390", "450", "515", "cool_white", "warm_white", "600", "630", "660", "730", "850", "950"]
-            for index, canal in enumerate(canales, 1):
-                self._esperar_abortable(0.2)
-                simulador.apagar()
-                simulador.enviar_comando_personalizado(
-                    cfg.get("plantilla_comando_excel", "<ch{channel}:{intensity}>"),
-                    channel=canal,
-                    intensity=50,
-                )
-                self.cola_ui.put(("log", f"[TEST] LED {index}/{len(canales)}: {canal} al 50%\n"))
-            simulador.apagar()
-            self.cola_ui.put(("log", "[OK] Prueba del simulador solar completada.\n"))
         except Exception as exc:
             self.cola_ui.put(("log", f"[ERROR] Prueba del simulador solar: {exc}\n"))
         finally:
-            if simulador is not None:
-                limpiar_simulador_solar_activo(simulador)
-                try:
-                    simulador.close()
-                except Exception:
-                    pass
             self.cola_ui.put(("fin", False))
 
     def _on_prueba_reles(self):
@@ -587,25 +558,15 @@ class LiteFrame(ttk.Frame):
         threading.Thread(target=self._hilo_prueba_reles, args=(cfg,), daemon=True).start()
 
     def _hilo_prueba_reles(self, cfg):
-        rele = None
         try:
-            estructuras = cfg.get("estructura", {}).get("estructuras") or ["Estructura 1", "Estructura 2"]
-            rele = crear_rele_estructura(cfg, self.evento_aborto)
-            rele.connect()
-            for index, estructura in enumerate(estructuras, 1):
-                if self.evento_aborto.is_set():
-                    raise RuntimeError("Prueba abortada por el usuario.")
-                letra = rele.select(estructura)
-                self.cola_ui.put(("log", f"[TEST] Estructura {index}/{len(estructuras)}: {estructura} ({letra})\n"))
-            self.cola_ui.put(("log", "[OK] Prueba de relés completada.\n"))
+            probar_reles_estructura(
+                cfg,
+                self.evento_aborto,
+                lambda mensaje: self.cola_ui.put(("log", mensaje)),
+            )
         except Exception as exc:
             self.cola_ui.put(("log", f"[ERROR] Prueba de relés: {exc}\n"))
         finally:
-            if rele is not None:
-                try:
-                    rele.close()
-                except Exception:
-                    pass
             self.cola_ui.put(("fin", False))
 
     def _esperar_abortable(self, segundos):
@@ -676,28 +637,13 @@ class LiteFrame(ttk.Frame):
                     self._esperar_abortable(cfg.get("estructura", {}).get("espera_conmutacion_s", 0.0))
                 cfg_medida = self._configurar_medida_lite(cfg, step)
                 resultado = run_keithley(cfg_medida)
-                fila = {
-                    "Iteración": index,
-                    "Nombre iteración": cfg_medida["nombre_medida"],
-                    "Estructura": nombre_estructura if step.get("estructura") else None,
-                    "Estado": resultado.get("estado_medida"),
-                    "Puntos": resultado.get("puntos_medidos"),
-                }
-                for motor, posicion in step["motores"].items():
-                    if motor == "motor_lineal":
-                        fila["Motor lineal (mm)"] = posicion["valor"] * float(cfg.get("motor", {}).get("resolucion_mm_paso", 0.00128))
-                    elif motor == "motor_inclinacion":
-                        fila["Inclinación (deg)"] = posicion["valor"]
-                    elif motor == "motor_rotacion":
-                        fila["Rotación (deg)"] = posicion["valor"]
-                for channel, intensity in step["leds"].items():
-                    fila[f"LED {channel} (%)"] = intensity
-                rfv = resultado.get("resultados_fv") or {}
-                for key, value in (("Voc_V", "Voc (V)"), ("Isc_A", "Isc (A)"), ("Pmax_W", "Pmax (W)"), ("Vmp_V", "Vmp (V)"), ("Imp_A", "Imp (A)"), ("Jsc_mA_cm2", "Jsc (mA/cm^2)"), ("Densidad_potencia_mW_cm2", "Densidad de potencia (mW/cm^2)"), ("Eff", "Eff (%)")):
-                    if key in rfv:
-                        fila[key] = rfv[key]
-                if "FF" in rfv:
-                    fila["FF (%)"] = float(rfv["FF"]) * 100.0
+                fila = construir_fila_resumen_medida(
+                    resultado,
+                    index,
+                    cfg_medida["nombre_medida"],
+                    nombre_estructura if step.get("estructura") else None,
+                )
+                añadir_ejes_a_fila(fila, step)
                 filas_resumen.append(fila)
             if filas_resumen:
                 ruta_resumen = guardar_resumen_studio_excel(cfg, filas_resumen)
