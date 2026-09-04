@@ -62,6 +62,18 @@ def test_generar_plan_estudio_ordena_medidas_por_estructura_y_cooldown():
     assert plan[2]["estructura"] == "Estructura 2"
 
 
+def test_generar_plan_estudio_transporta_tiempo_led_configurado():
+    cfg = _build_cfg()
+    cfg["irradiancia_potencia"]["espera_estabilizacion_s"] = 0.25
+    cfg["irradiancia_potencia"]["espera_encendido_medida_s"] = 0.0
+    cfg["irradiancia_combinacion"]["cada_n_medidas_estructura"] = 0
+
+    plan = generar_plan_estudio(cfg)
+
+    assert plan[0]["solar_params"]["espera_estabilizacion_s"] == 0.25
+    assert plan[0]["solar_params"]["espera_encendido_medida_s"] == 0.0
+
+
 def test_construir_nombre_iteracion_omite_ejes_inactivos():
     nombre = construir_nombre_iteracion(
         "medida studio",

@@ -194,7 +194,7 @@ def aplicar_inversion_datos(df, invertir_eje_y=False):
     return df
 
 
-def run(cfg=None, callback_fin_medida=None):
+def run(cfg=None, callback_fin_medida=None, inst=None, inicializar=True):
     t_programa_ini = time.perf_counter()
 
     if cfg is None:
@@ -210,7 +210,9 @@ def run(cfg=None, callback_fin_medida=None):
 
     n_puntos_total = sum(seg["n_puntos"] for seg in segmentos)
 
-    inst = keithley.conectar_y_verificar(cfg["recurso_visa"])
+    instrumento_externo = inst is not None
+    if not instrumento_externo:
+        inst = keithley.conectar_y_verificar(cfg["recurso_visa"])
     registrar_instrumento_activo(inst)
 
     inst.timeout = 60000
@@ -223,7 +225,8 @@ def run(cfg=None, callback_fin_medida=None):
     mensaje_limite_corriente = None
 
     try:
-        idn = inst.query("*IDN?").strip()
+        if not instrumento_externo or inicializar:
+            idn = inst.query("*IDN?").strip()
 
         es_rapida = cfg.get("es_medida_rapida", False)
 
@@ -238,7 +241,8 @@ def run(cfg=None, callback_fin_medida=None):
         # log(f"Modo de medida       : {cfg['modo_medida']}")
         # log(f"Puntos totales       : {n_puntos_total}")
 
-        keithley.inicializar_instrumento(inst, cfg)
+        if inicializar:
+            keithley.inicializar_instrumento(inst, cfg)
 
         if cfg.get("fecha_hora_inicio_medida") is None:
             cfg["fecha_hora_inicio_medida"] = datetime.now()
@@ -303,10 +307,11 @@ def run(cfg=None, callback_fin_medida=None):
     finally:
         keithley.apagar_seguro(inst)
         limpiar_instrumento_activo(inst)
-        try:
-            inst.close()
-        except Exception:
-            pass
+        if not instrumento_externo:
+            try:
+                inst.close()
+            except Exception:
+                pass
 
     if not dfs:
         estado_medida = "abortada_sin_datos"

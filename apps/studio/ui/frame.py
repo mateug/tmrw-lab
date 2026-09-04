@@ -393,24 +393,35 @@ class StudioFrame(ttk.Frame):
         # Iluminación
         cfg["simulador_solar"]["puerto_serie"] = v["solar_puerto_serie"].get().strip()
         cfg["simulador_solar"]["baudrate"] = int(v["solar_baudrate"].get() or 9600)
+        cfg["simulador_solar"]["tiempo_confirmacion_encendido_s"] = 0.0
+        cfg["simulador_solar"]["intervalo_confirmacion_s"] = 0.0
         cfg["irradiancia_modo"] = v["irradiancia_modo"].get()
+        espera_led_s = float(v["solar_espera_encendido_s"].get() or 0.0)
         cfg["irradiancia_potencia"]["p_inicial_mW_cm2"] = float(v["solar_p_ini"].get() or 0.0)
         cfg["irradiancia_potencia"]["p_final_mW_cm2"] = float(v["solar_p_fin"].get() or 100.0)
         cfg["irradiancia_potencia"]["paso_mW_cm2"] = float(v["solar_p_paso"].get() or 10.0)
         cfg["irradiancia_potencia"]["lista_potencias_custom"] = v["solar_p_custom"].get().strip() or None
+        cfg["irradiancia_potencia"]["espera_estabilizacion_s"] = espera_led_s
+        cfg["irradiancia_potencia"]["espera_encendido_medida_s"] = 0.0
         cfg["irradiancia_longitud_onda"]["i_inicial_pct"] = float(v["solar_i_ini"].get() or 0.0)
         cfg["irradiancia_longitud_onda"]["i_final_pct"] = float(v["solar_i_fin"].get() or 100.0)
         cfg["irradiancia_longitud_onda"]["paso_pct"] = float(v["solar_i_paso"].get() or 10.0)
         cfg["irradiancia_longitud_onda"]["lista_intensidades_custom"] = v["solar_i_custom"].get().strip() or None
+        cfg["irradiancia_longitud_onda"]["espera_estabilizacion_s"] = espera_led_s
+        cfg["irradiancia_longitud_onda"]["espera_encendido_medida_s"] = 0.0
         cfg["irradiancia_longitud_onda"]["canales_seleccionados"] = [
             ch for ch, sel in v["solar_canales_seleccionados_dict"].items() if sel.get()
         ]
         cfg["irradiancia_combinacion"]["canales_combinacion"] = v["solar_canales_comb_lista"]
         cfg["irradiancia_combinacion"]["relaciones"] = list(v.get("solar_canales_comb_relaciones", []))
+        cfg["irradiancia_combinacion"]["espera_estabilizacion_s"] = espera_led_s
+        cfg["irradiancia_combinacion"]["espera_encendido_medida_s"] = 0.0
         cfg["irradiancia_combinacion"]["cada_n_medidas_estructura"] = int(v["solar_cada_n_medidas_estructura"].get() or 0)
         cfg["irradiancia_combinacion"]["tiempo_enfriado_s"] = float(v["solar_tiempo_enfriado_s"].get() or 0.0)
         cfg["irradiancia_combinacion"]["tiempo_espera_cada_n_s"] = float(v["solar_tiempo_espera_cada_n"].get() or 0.0)
         cfg["irradiancia_multiples_combinaciones"]["combinaciones"] = self._parsear_recetas_iluminacion()
+        cfg["irradiancia_multiples_combinaciones"]["espera_estabilizacion_s"] = espera_led_s
+        cfg["irradiancia_multiples_combinaciones"]["espera_encendido_medida_s"] = 0.0
         cfg["irradiancia_multiples_combinaciones"]["cada_n_medidas_estructura"] = int(v["solar_cada_n_medidas_estructura"].get() or 0)
         cfg["irradiancia_multiples_combinaciones"]["tiempo_enfriado_s"] = float(v["solar_tiempo_enfriado_s"].get() or 0.0)
         cfg["irradiancia_multiples_combinaciones"]["tiempo_espera_cada_n_s"] = float(v["solar_tiempo_espera_cada_n"].get() or 0.0)
@@ -432,7 +443,7 @@ class StudioFrame(ttk.Frame):
             nombre_mostrar = v["estructura_nombres_dict"][nombre_base].get().strip() or nombre_base
             kvars = v["estructura_keithley_vars"][nombre_base]
             cfg["estructura"]["keithley_por_estructura"][nombre_mostrar] = {
-                "recurso_visa": kvars["recurso_visa"].get().strip(),
+                "recurso_visa": cfg["recurso_visa"],
                 "modo_medida": kvars["modo_medida"].get().strip(),
                 "i_max_uA": float(kvars["i_max_uA"].get() or 10.0),
                 "v_inicial_mV": float(kvars["v_ini_dir"].get() or 0.0),
@@ -516,7 +527,6 @@ class StudioFrame(ttk.Frame):
                         break
                     if estructura and rele is not None:
                         rele.select(estructura)
-                        time.sleep(float(cfg.get("estructura", {}).get("espera_conmutacion_s", 0.0)))
                     self.cola_ui.put(("log", f"[{idx}/{len(estructuras)}] Medida IV rápida: {estructura or 'sin estructura'}\n"))
                     keithley_cfg = cfg.get("estructura", {}).get(
                         "keithley_por_estructura", {}
@@ -657,6 +667,9 @@ class StudioFrame(ttk.Frame):
     def _hilo_secuencia(self, cfg, plan):
         rele = None
         simulador = None
+        keithley_inst = None
+        keithley_inicializado = False
+        solar_configuracion_actual = None
         filas_resumen = []
         nombres_usados = set()
         try:
@@ -670,6 +683,8 @@ class StudioFrame(ttk.Frame):
                     registrar_simulador_solar_activo(simulador)
                     simulador.connect()
 
+            keithley_inst = conectar_y_verificar(str(cfg.get("recurso_visa", "AUTO")).strip() or "AUTO")
+
             for idx, paso in enumerate(plan, 1):
                 if self.evento_aborto.is_set():
                     self.cola_ui.put(("log", "\n[⏹] Secuencia abortada por el usuario.\n"))
@@ -681,16 +696,15 @@ class StudioFrame(ttk.Frame):
                     if estructura and rele is not None:
                         self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Seleccionando estructura: {estructura}\n"))
                         rele.select(estructura)
-                        time.sleep(float(cfg.get("estructura", {}).get("espera_conmutacion_s", 0.0)))
                     solar = paso.get("solar_params") or {}
                     if simulador is not None:
-                        configurar_paso_solar(
-                            simulador,
-                            paso.get("solar_modo", "off"),
-                            solar,
-                        )
-                        self._esperar_abortable(solar.get("espera_estabilizacion_s", 0.0))
-                        self._esperar_abortable(solar.get("espera_encendido_medida_s", 0.0))
+                        solar_modo = paso.get("solar_modo", "off")
+                        solar_configuracion = (solar_modo, repr(sorted(solar.items())))
+                        if solar_configuracion != solar_configuracion_actual:
+                            configurar_paso_solar(simulador, solar_modo, solar)
+                            self._esperar_abortable(solar.get("espera_estabilizacion_s", 0.0))
+                            self._esperar_abortable(solar.get("espera_encendido_medida_s", 0.0))
+                            solar_configuracion_actual = solar_configuracion
                     self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando medida para {estructura or 'estructura no seleccionada'} (Keithley 2450)\n"))
                     cfg_local = self._configurar_medida_estructura(
                         cfg, estructura, keithley_cfg
@@ -702,7 +716,12 @@ class StudioFrame(ttk.Frame):
                     nombres_usados.add(nombre_iteracion)
                     cfg_local["nombre_medida"] = nombre_iteracion
                     from core.measure.run_keithley import run as run_keithley_medida
-                    resultado = run_keithley_medida(cfg_local)
+                    resultado = run_keithley_medida(
+                        cfg_local,
+                        inst=keithley_inst,
+                        inicializar=not keithley_inicializado,
+                    )
+                    keithley_inicializado = True
                     fila = construir_fila_resumen_medida(
                         resultado, idx, nombre_iteracion, estructura
                     )
@@ -734,6 +753,7 @@ class StudioFrame(ttk.Frame):
                             simulador.apagar()
                         except Exception:
                             pass
+                    solar_configuracion_actual = None
                     time.sleep(float(paso.get("duracion_s", 0.0)))
                 else:
                     self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Ejecutando paso: {paso}\n"))
@@ -756,6 +776,11 @@ class StudioFrame(ttk.Frame):
                 limpiar_simulador_solar_activo(simulador)
                 try:
                     simulador.close()
+                except Exception:
+                    pass
+            if keithley_inst is not None:
+                try:
+                    keithley_inst.close()
                 except Exception:
                     pass
             self.cola_ui.put(("fin_secuencia", None))

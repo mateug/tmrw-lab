@@ -59,6 +59,7 @@ class StudioMeasureTests(unittest.TestCase):
             "Celda A",
             {
                 "modo_medida": "completa",
+                "recurso_visa": "GPIB0::99::INSTR",
                 "i_max_uA": 25.0,
                 "v_inicial_mV": 10.0,
                 "v_final_mV": 610.0,

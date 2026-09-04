@@ -26,9 +26,7 @@ def construir_configuracion_keithley(
     ).strip() or "completa"
     cfg["i_max_uA"] = float(overrides.get("i_max_uA", cfg.get("i_max_uA", 10.0)))
     cfg["i_max_A"] = cfg["i_max_uA"] * 1e-6
-    cfg["recurso_visa"] = str(
-        overrides.get("recurso_visa", cfg.get("recurso_visa", "AUTO"))
-    ).strip() or "AUTO"
+    cfg["recurso_visa"] = str(cfg_base.get("recurso_visa", "AUTO")).strip() or "AUTO"
     cfg["invertir_eje_y_graficas"] = bool(
         overrides.get("invertir_eje_y", cfg.get("invertir_eje_y_graficas", True))
     )
