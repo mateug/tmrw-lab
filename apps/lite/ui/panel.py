@@ -33,6 +33,7 @@ from core.ui_kit.shared import (
     mostrar_info,
 )
 from core.ui_kit.theme import theme_mgr
+from core.ui_kit.time_estimator import estimar_secuencia, formatear_duracion
 
 from apps.lite.config import get_default_config
 from apps.lite.plan_engine import LitePlan, build_lite_plan, construir_nombre_iteracion_lite, insertar_enfriamientos_lite
@@ -238,6 +239,15 @@ class LiteFrame(ttk.Frame):
 
         f_res = crear_seccion_frame(col_der, "Consola de Ejecución", "results")
         f_res.pack(fill="both", expand=True)
+
+        f_status = ttk.Frame(f_res, style="Results.TFrame")
+        f_status.pack(fill="x", pady=(0, ui(3)))
+        self.lbl_tiempo = ttk.Label(
+            f_status,
+            text="Tiempo estimado: calculando...",
+            style="Results.TLabel",
+        )
+        self.lbl_tiempo.pack(side="left", padx=ui(4))
 
         self.txt_log = scrolledtext.ScrolledText(
             f_res,
@@ -512,6 +522,7 @@ class LiteFrame(ttk.Frame):
         self.btn_test_reles.configure(state="disabled")
         self.btn_test_solar.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
+        self.lbl_tiempo.configure(text="Tiempo estimado: calculando...")
         plan = insertar_enfriamientos_lite(
             self._plan_lite,
             cfg["cada_n_medidas_estructura"],
@@ -582,6 +593,7 @@ class LiteFrame(ttk.Frame):
         motores = {}
         completada = False
         filas_resumen = []
+        duraciones_medidas = []
         try:
             if cfg.get("barrido_motor_activo"):
                 ejes_motor = set()
@@ -612,6 +624,7 @@ class LiteFrame(ttk.Frame):
                     self.cola_ui.put(("log", f"[{index}/{len(plan.steps)}] Enfriando durante {step['duracion_s']} s\n"))
                     self._esperar_abortable(step["duracion_s"])
                     continue
+                inicio_medida = time.perf_counter()
                 self.cola_ui.put(("log", f"[{index}/{plan.measure_count}] Fila Excel {step['fila_excel']}: preparando medida\n"))
                 nombre_estructura = self._nombres_estructuras.get(
                     step.get("estructura"), tk.StringVar(value=step.get("estructura") or "")
@@ -645,6 +658,31 @@ class LiteFrame(ttk.Frame):
                 )
                 añadir_ejes_a_fila(fila, step)
                 filas_resumen.append(fila)
+                duraciones_medidas.append(time.perf_counter() - inicio_medida)
+                medidas_restantes = sum(
+                    restante.get("tipo") != "enfriar" for restante in plan.steps[index:]
+                )
+                pausas_restantes = sum(
+                    float(restante.get("duracion_s", 0.0))
+                    for restante in plan.steps[index:]
+                    if restante.get("tipo") == "enfriar"
+                )
+                pausas_totales = sum(
+                    float(restante.get("duracion_s", 0.0))
+                    for restante in plan.steps
+                    if restante.get("tipo") == "enfriar"
+                )
+                estimacion = estimar_secuencia(
+                    duraciones_medidas, medidas_restantes, pausas_totales, pausas_restantes
+                )
+                if estimacion is not None:
+                    total, restante = estimacion
+                    self.cola_ui.put((
+                        "estimacion",
+                        f"Tiempo estimado: {formatear_duracion(total)} | "
+                        f"Restante: {formatear_duracion(restante)} "
+                        f"({len(duraciones_medidas)}/{len(duraciones_medidas) + medidas_restantes})",
+                    ))
             if filas_resumen:
                 ruta_resumen = guardar_resumen_studio_excel(cfg, filas_resumen)
                 self.cola_ui.put(("log", f"Resumen combinado guardado en: {ruta_resumen}\n"))
@@ -728,6 +766,8 @@ class LiteFrame(ttk.Frame):
                 self.txt_log.see("end")
             elif tipo == "grafica":
                 self._mostrar_grafica(*dato)
+            elif tipo == "estimacion":
+                self.lbl_tiempo.configure(text=str(dato))
             elif tipo == "fin":
                 self.ejecutando = False
                 self.btn_iniciar.configure(state="normal")

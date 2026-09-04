@@ -27,6 +27,7 @@ from core.plot.plotter import generar_imagen_tk_curvas_iv_pv
 from core.ui_kit.scaler import ui, ui_font, ui_font_console, ui_font_label, UIConfig
 from core.ui_kit.shared import crear_barra_superior, crear_seccion_frame, mostrar_error, mostrar_info
 from core.ui_kit.theme import theme_mgr
+from core.ui_kit.time_estimator import estimar_secuencia, formatear_duracion
 
 from apps.studio.config import get_default_config
 from apps.studio.plan_engine import generar_plan_estudio
@@ -271,6 +272,13 @@ class StudioFrame(ttk.Frame):
         f_status = ttk.Frame(f_res, style="Results.TFrame")
         f_status.pack(fill="x", pady=(0, ui(3)))
 
+        self.lbl_tiempo = ttk.Label(
+            f_status,
+            text="Tiempo estimado: calculando...",
+            style="Results.TLabel",
+        )
+        self.lbl_tiempo.pack(side="left", padx=ui(4))
+
         res_c = t.get("results", {})
         self.lbl_badge = tk.Label(
             f_status,
@@ -494,6 +502,7 @@ class StudioFrame(ttk.Frame):
         self.btn_test_solar.configure(state="disabled")
         self.btn_abortar.configure(state="normal")
         self._set_badge("MIDIENDO", "#f59e0b", "#ffffff")
+        self.lbl_tiempo.configure(text="Tiempo estimado: calculando...")
         self.txt_log.insert("end", f"\n>>> INICIANDO SECUENCIA ({len(plan)} pasos planificados)...\n")
 
         threading.Thread(target=self._hilo_secuencia, args=(cfg, plan), daemon=True).start()
@@ -670,6 +679,7 @@ class StudioFrame(ttk.Frame):
         keithley_inst = None
         keithley_inicializado = False
         solar_configuracion_actual = None
+        duraciones_medidas = []
         filas_resumen = []
         nombres_usados = set()
         try:
@@ -691,6 +701,7 @@ class StudioFrame(ttk.Frame):
                     break
 
                 if paso.get("tipo") == "medida":
+                    inicio_medida = time.perf_counter()
                     estructura = paso.get("estructura")
                     keithley_cfg = paso.get("keithley", {})
                     if estructura and rele is not None:
@@ -745,6 +756,31 @@ class StudioFrame(ttk.Frame):
                             fila[f"LED {canal} (%)"] = intensidad
 
                     filas_resumen.append(fila)
+                    duraciones_medidas.append(time.perf_counter() - inicio_medida)
+                    medidas_restantes = sum(
+                        restante.get("tipo") == "medida" for restante in plan[idx:]
+                    )
+                    pausas_restantes = sum(
+                        float(restante.get("duracion_s", 0.0))
+                        for restante in plan[idx:]
+                        if restante.get("tipo") == "enfriar"
+                    )
+                    pausas_totales = sum(
+                        float(restante.get("duracion_s", 0.0))
+                        for restante in plan
+                        if restante.get("tipo") == "enfriar"
+                    )
+                    estimacion = estimar_secuencia(
+                        duraciones_medidas, medidas_restantes, pausas_totales, pausas_restantes
+                    )
+                    if estimacion is not None:
+                        total, restante = estimacion
+                        self.cola_ui.put((
+                            "estimacion",
+                            f"Tiempo estimado: {formatear_duracion(total)} | "
+                            f"Restante: {formatear_duracion(restante)} "
+                            f"({len(duraciones_medidas)}/{len(duraciones_medidas) + medidas_restantes})",
+                        ))
                     time.sleep(0.1)
                 elif paso.get("tipo") == "enfriar":
                     self.cola_ui.put(("log", f"[{idx}/{len(plan)}] Enfriamiento LED: apagando fuente durante {paso.get('duracion_s', 0.0)} s\n"))
@@ -796,6 +832,8 @@ class StudioFrame(ttk.Frame):
                 self.txt_log.see("end")
             elif tipo == "grafica":
                 self._mostrar_grafica(*dato)
+            elif tipo == "estimacion":
+                self.lbl_tiempo.configure(text=str(dato))
             elif tipo == "fin_secuencia":
                 self.ejecutando = False
                 self.btn_iniciar.configure(state="normal")
