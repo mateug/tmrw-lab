@@ -510,6 +510,11 @@ class LiteFrame(ttk.Frame):
         cfg["estructura"]["puerto_serie"] = str(cfg.get("estructura", {}).get("puerto_serie", "COM5"))
         cfg["estructura"]["baudrate"] = int(cfg.get("estructura", {}).get("baudrate", 9600))
         cfg["estructura"]["espera_conmutacion_s"] = float(self.vars["espera_conmutacion_s"].get() or 0.0)
+        cfg["motor"].setdefault("inclinacion", {})
+        cfg["motor"].setdefault("rotacion", {})
+        for eje in ("inclinacion", "rotacion"):
+            cfg["motor"][eje].setdefault("puerto_serie", "COM5" if eje == "inclinacion" else "COM6")
+            cfg["motor"][eje].setdefault("baudrate", 115200)
         cfg["estructura"]["keithley_por_estructura"] = {
             (self._nombres_estructuras.get(name, tk.StringVar(value=name)).get().strip() or name): {
                 "recurso_visa": cfg["recurso_visa"],

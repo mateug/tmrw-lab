@@ -1,7 +1,15 @@
 import pandas as pd
 import pytest
 
+from apps.lite.config import get_default_config
 from apps.lite.plan_engine import build_lite_plan, construir_nombre_iteracion_lite, insertar_enfriamientos_lite
+
+
+def test_default_lite_config_includes_nested_motor_axes():
+    cfg = get_default_config()
+
+    assert cfg["motor"]["inclinacion"]["puerto_serie"] == "COM5"
+    assert cfg["motor"]["rotacion"]["puerto_serie"] == "COM6"
 
 
 def test_build_lite_plan_expands_only_structures_and_preserves_order():
