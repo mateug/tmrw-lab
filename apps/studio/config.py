@@ -29,6 +29,7 @@ def get_default_config() -> dict:
 
     # Ejes combinables de Studio
     cfg["eje_estructura_activo"] = False
+    cfg["estructura_modo"] = "individual"
     cfg["estructura_seleccionada"] = "Estructura 1"
     cfg["estructuras_disponibles"] = ["Estructura 1", "Estructura 2"]
 

@@ -108,6 +108,8 @@ class StudioFrame(ttk.Frame):
             "barrido_motor_activo": tk.BooleanVar(value=c.get("barrido_motor_activo", False)),
             "simulador_solar_activo": tk.BooleanVar(value=c.get("simulador_solar_activo", False)),
             "eje_estructura_activo": tk.BooleanVar(value=c.get("eje_estructura_activo", False)),
+            "estructura_modo": tk.StringVar(value=c.get("estructura_modo", "relay" if c.get("eje_estructura_activo", False) else "individual")),
+            "estructura_seleccionada": tk.StringVar(value=c.get("estructura_seleccionada", "Estructura 1")),
             # Motores (lineal, inclinación y rotación)
             "motor_lineal_activo": tk.BooleanVar(value=c.get("motor_lineal_activo", True)),
             "motor_inclinacion_activo": tk.BooleanVar(value=c.get("motor_inclinacion_activo", False)),
@@ -361,7 +363,10 @@ class StudioFrame(ttk.Frame):
         cfg["motor_inclinacion_activo"] = v["motor_inclinacion_activo"].get()
         cfg["motor_rotacion_activo"] = v["motor_rotacion_activo"].get()
         cfg["simulador_solar_activo"] = v["simulador_solar_activo"].get()
-        cfg["eje_estructura_activo"] = v["eje_estructura_activo"].get()
+        cfg["estructura_seleccionada"] = v["estructura_seleccionada"].get().strip() or "Estructura 1"
+        estructura_modo = v["estructura_modo"].get() or "individual"
+        cfg["estructura_modo"] = estructura_modo
+        cfg["eje_estructura_activo"] = estructura_modo == "relay"
 
         # Motor
         cfg["motor"]["puerto_serie"] = v["motor_puerto_serie"].get().strip()
@@ -437,16 +442,19 @@ class StudioFrame(ttk.Frame):
         cfg["irradiancia_multiples_combinaciones"]["tiempo_espera_cada_n_s"] = float(v["solar_tiempo_espera_cada_n"].get() or 0.0)
 
         # Estructura
-        estructura_seleccionadas = [
-            nombre for nombre, sel in v["estructura_seleccionadas_dict"].items() if sel.get()
-        ]
+        if estructura_modo == "relay":
+            estructura_seleccionadas = [
+                nombre for nombre, sel in v["estructura_seleccionadas_dict"].items() if sel.get()
+            ]
+        else:
+            estructura_seleccionadas = []
         estructura_nombres = [
             v["estructura_nombres_dict"].get(nombre, tk.StringVar(value=nombre)).get().strip() or nombre
             for nombre in estructura_seleccionadas
         ]
         cfg["estructura"]["puerto_serie"] = v["estructura_puerto_serie"].get().strip()
         cfg["estructura"]["baudrate"] = int(v["estructura_baudrate"].get() or 9600)
-        cfg["estructura"]["estructuras"] = estructura_nombres
+        cfg["estructura"]["estructuras"] = estructura_nombres or [cfg["estructura_seleccionada"]]
         cfg["estructura"]["espera_conmutacion_s"] = float(v["estructura_espera_s"].get() or 0.5)
         cfg["estructura"]["keithley_por_estructura"] = {}
         for nombre_base in estructura_seleccionadas:

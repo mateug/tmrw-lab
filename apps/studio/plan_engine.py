@@ -336,7 +336,8 @@ def construir_nombre_iteracion(nombre_base: str, paso: dict) -> str:
 
 def construir_eje_estructura(cfg: dict) -> list[dict]:
     """Construye la lista de selecciones para el eje de estructura."""
-    if not cfg.get("eje_estructura_activo", False):
+    relay_active = cfg.get("estructura_modo") == "relay" or cfg.get("eje_estructura_activo", False)
+    if not relay_active:
         return [{"estructura_activa": False, "estructura": None, "keithley": {}}]
 
     estructura_cfg = cfg.get("estructura", {})
@@ -382,7 +383,8 @@ def generar_plan_estudio(cfg: dict) -> list[dict]:
     eje_led = construir_eje_leds(cfg)
     config_estructura = cfg.get("estructura", {})
     estructuras_seleccionadas = []
-    if cfg.get("eje_estructura_activo", False):
+    relay_active = cfg.get("estructura_modo") == "relay" or cfg.get("eje_estructura_activo", False)
+    if relay_active:
         estructuras_seleccionadas = [
             str(est) for est in (config_estructura.get("estructuras") or [])
         ]
