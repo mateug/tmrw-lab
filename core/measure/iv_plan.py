@@ -70,7 +70,7 @@ def normalizar_segmento(nombre, cfg_segmento, modo_medida, cfg_directa=None):
     else:
         raise ValueError(f"Segmento desconocido: {nombre}")
 
-    tensiones = construir_barrido_decreciente(v_ini, v_fin, paso)
+    tensiones = construir_barrido(v_ini, v_fin, paso)
     return {
         "segmento": nombre,
         "v_inicial_V": float(v_ini),
