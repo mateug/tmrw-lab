@@ -16,6 +16,7 @@ BLOQUE_BARRIDO_IV = {
     "modo_medida": "completa",           # "directa" | "inversa" | "completa"
     "i_max_A": 1e-5,
     "i_max_uA": 10,
+    "i_max_unit": "uA",
     "superficie_um2": None,
     "irradiancia_mW_cm2": None,
     "rango_corriente_A": None,

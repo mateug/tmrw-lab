@@ -118,6 +118,7 @@ class LiteFrame(ttk.Frame):
             "v_fin_inv": tk.StringVar(value=str(c["inversa"]["v_final_V"])),
             "paso_inv": tk.StringVar(value=str(c["inversa"]["paso_mV"])),
             "i_max_uA": tk.StringVar(value=str(c.get("i_max_uA", 10.0))),
+            "i_max_unit": tk.StringVar(value=str(c.get("i_max_unit", "uA"))),
             "superficie_um2": tk.StringVar(value="" if c.get("superficie_um2") is None else str(c["superficie_um2"])),
             "irradiancia_mW_cm2": tk.StringVar(value="" if c.get("irradiancia_mW_cm2") is None else str(c["irradiancia_mW_cm2"])),
             "invertir_eje_y": tk.BooleanVar(value=c.get("invertir_eje_y_graficas", True)),
@@ -406,6 +407,7 @@ class LiteFrame(ttk.Frame):
                 "recurso_visa": tk.StringVar(value=self.vars["recurso_visa"].get()),
                 "modo_medida": tk.StringVar(value=self.vars["modo_medida"].get()),
                 "i_max_uA": tk.StringVar(value=self.vars["i_max_uA"].get()),
+                "i_max_unit": tk.StringVar(value=self.vars["i_max_unit"].get()),
                 "v_inicial_mV": tk.StringVar(value=self.vars["v_ini_dir"].get()),
                 "v_final_mV": tk.StringVar(value=self.vars["v_fin_dir"].get()),
                 "paso_mV": tk.StringVar(value=self.vars["paso_dir"].get()),
@@ -425,8 +427,9 @@ class LiteFrame(ttk.Frame):
             ttk.Entry(row, textvariable=values["recurso_visa"], width=16).pack(side="left", padx=(ui(3), ui(10)))
             ttk.Label(row, text="Modo:", style="Keithley.TLabel").pack(side="left")
             ttk.Combobox(row, textvariable=values["modo_medida"], values=["completa", "directa", "inversa"], state="readonly", width=11).pack(side="left", padx=(ui(3), ui(10)))
-            ttk.Label(row, text="I máx (µA):", style="Keithley.TLabel").pack(side="left")
-            ttk.Entry(row, textvariable=values["i_max_uA"], width=8).pack(side="left", padx=(ui(3), ui(8)))
+            ttk.Label(row, text="I máx:", style="Keithley.TLabel").pack(side="left")
+            ttk.Entry(row, textvariable=values["i_max_uA"], width=8).pack(side="left", padx=(ui(3), ui(4)))
+            ttk.Combobox(row, textvariable=values["i_max_unit"], values=["uA", "mA", "A"], state="readonly", width=5).pack(side="left", padx=(0, ui(8)))
             ttk.Checkbutton(row, text="Invertir eje Y", variable=values["invertir_eje_y"], style="Keithley.TCheckbutton").pack(side="left")
             detail = ttk.Frame(block, style="Keithley.TFrame")
             detail.pack(fill="x", pady=(ui(3), 0))
@@ -474,7 +477,12 @@ class LiteFrame(ttk.Frame):
         cfg["directa"]["paso_mV"] = float(v["paso_dir"].get() or 10.0)
         cfg["inversa"]["v_final_V"] = float(v["v_fin_inv"].get() or -11.0)
         cfg["inversa"]["paso_mV"] = float(v["paso_inv"].get() or 100.0)
-        cfg["i_max_uA"] = float(v["i_max_uA"].get() or 10.0)
+        valor_i_max = float(v["i_max_uA"].get() or 10.0)
+        unidad_i_max = str(v.get("i_max_unit", tk.StringVar(value="uA")).get() or "uA").strip()
+        factor_i_max = {"uA": 1e-6, "mA": 1e-3, "A": 1.0}.get(unidad_i_max, 1e-6)
+        cfg["i_max_uA"] = valor_i_max if unidad_i_max == "uA" else valor_i_max * (1e6 if unidad_i_max == "uA" else 1e3 if unidad_i_max == "mA" else 1.0)
+        cfg["i_max_A"] = valor_i_max * factor_i_max
+        cfg["i_max_unit"] = unidad_i_max
         cfg["superficie_um2"] = float(v["superficie_um2"].get()) if v["superficie_um2"].get() else None
         cfg["irradiancia_mW_cm2"] = float(v["irradiancia_mW_cm2"].get()) if v["irradiancia_mW_cm2"].get() else None
         cfg["invertir_eje_y_graficas"] = v["invertir_eje_y"].get()

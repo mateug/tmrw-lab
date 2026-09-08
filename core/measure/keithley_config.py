@@ -5,6 +5,22 @@ from copy import deepcopy
 from collections.abc import Callable
 
 
+FACTORES_I_MAX_POR_UNIDAD = {
+    "uA": 1e-6,
+    "mA": 1e-3,
+    "A": 1.0,
+}
+
+
+def convertir_i_max_a_amperios(valor, unidad="uA"):
+    """Convierte el valor de compliance a amperios según su unidad."""
+    try:
+        valor = float(valor)
+    except (TypeError, ValueError):
+        valor = 0.0
+    return valor * FACTORES_I_MAX_POR_UNIDAD.get(str(unidad).strip() or "uA", 1e-6)
+
+
 def construir_configuracion_keithley(
     cfg_base: dict,
     estructura: str | None = None,
@@ -24,8 +40,15 @@ def construir_configuracion_keithley(
     cfg["modo_medida"] = str(
         overrides.get("modo_medida", cfg.get("modo_medida", "completa"))
     ).strip() or "completa"
-    cfg["i_max_uA"] = float(overrides.get("i_max_uA", cfg.get("i_max_uA", 10.0)))
-    cfg["i_max_A"] = cfg["i_max_uA"] * 1e-6
+
+    unidad = str(overrides.get("i_max_unit", cfg.get("i_max_unit", "uA"))).strip() or "uA"
+    valor_raw = overrides.get("i_max_value", overrides.get("i_max_uA", cfg.get("i_max_uA", 10.0)))
+    valor = float(valor_raw)
+
+    cfg["i_max_unit"] = unidad
+    cfg["i_max_A"] = convertir_i_max_a_amperios(valor, unidad)
+    cfg["i_max_uA"] = cfg["i_max_A"] * 1e6
+
     if "superficie_um2" in overrides:
         cfg["superficie_um2"] = (
             float(overrides["superficie_um2"])

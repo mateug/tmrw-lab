@@ -98,6 +98,7 @@ class StudioFrame(ttk.Frame):
             "v_fin_inv": tk.StringVar(value=str(c["inversa"]["v_final_V"])),
             "paso_inv": tk.StringVar(value=str(c["inversa"]["paso_mV"])),
             "i_max_uA": tk.StringVar(value=str(c.get("i_max_uA", 10.0))),
+            "i_max_unit": tk.StringVar(value=str(c.get("i_max_unit", "uA"))),
             "superficie_um2": tk.StringVar(value="" if c.get("superficie_um2") is None else str(c["superficie_um2"])),
             "irradiancia_mW_cm2": tk.StringVar(value="" if c.get("irradiancia_mW_cm2") is None else str(c["irradiancia_mW_cm2"])),
             "invertir_eje_y": tk.BooleanVar(value=c.get("invertir_eje_y_graficas", True)),
@@ -199,6 +200,7 @@ class StudioFrame(ttk.Frame):
                     "recurso_visa": tk.StringVar(value=c.get("recurso_visa", "AUTO")),
                     "modo_medida": tk.StringVar(value=c.get("modo_medida", "completa")),
                     "i_max_uA": tk.StringVar(value=str(c.get("i_max_uA", 10.0))),
+                    "i_max_unit": tk.StringVar(value=str(c.get("i_max_unit", "uA"))),
                     "superficie_um2": tk.StringVar(value="" if c.get("superficie_um2") is None else str(c["superficie_um2"])),
                     "irradiancia_mW_cm2": tk.StringVar(value="" if c.get("irradiancia_mW_cm2") is None else str(c["irradiancia_mW_cm2"])),
                     "v_ini_dir": tk.StringVar(value=str(c["directa"]["v_inicial_mV"])),
@@ -351,7 +353,12 @@ class StudioFrame(ttk.Frame):
         cfg["directa"]["paso_mV"] = float(v["paso_dir"].get() or 10.0)
         cfg["inversa"]["v_final_V"] = float(v["v_fin_inv"].get() or -0.5)
         cfg["inversa"]["paso_mV"] = float(v["paso_inv"].get() or 10.0)
-        cfg["i_max_uA"] = float(v["i_max_uA"].get() or 10.0)
+        valor_i_max = float(v["i_max_uA"].get() or 10.0)
+        unidad_i_max = str(v.get("i_max_unit", tk.StringVar(value="uA")).get() or "uA").strip()
+        factor_i_max = {"uA": 1e-6, "mA": 1e-3, "A": 1.0}.get(unidad_i_max, 1e-6)
+        cfg["i_max_uA"] = valor_i_max if unidad_i_max == "uA" else valor_i_max * (1e6 if unidad_i_max == "uA" else 1e3 if unidad_i_max == "mA" else 1.0)
+        cfg["i_max_A"] = valor_i_max * factor_i_max
+        cfg["i_max_unit"] = unidad_i_max
         cfg["superficie_um2"] = float(v["superficie_um2"].get()) if v["superficie_um2"].get() else None
         cfg["irradiancia_mW_cm2"] = float(v["irradiancia_mW_cm2"].get()) if v["irradiancia_mW_cm2"].get() else None
         cfg["invertir_eje_y_graficas"] = v["invertir_eje_y"].get()
@@ -460,10 +467,15 @@ class StudioFrame(ttk.Frame):
         for nombre_base in estructura_seleccionadas:
             nombre_mostrar = v["estructura_nombres_dict"][nombre_base].get().strip() or nombre_base
             kvars = v["estructura_keithley_vars"][nombre_base]
+            valor_i_max = float(kvars["i_max_uA"].get() or 10.0)
+            unidad_i_max = str(kvars.get("i_max_unit", tk.StringVar(value="uA")).get() or "uA").strip()
+            factor_i_max = {"uA": 1e-6, "mA": 1e-3, "A": 1.0}.get(unidad_i_max, 1e-6)
             cfg["estructura"]["keithley_por_estructura"][nombre_mostrar] = {
                 "recurso_visa": cfg["recurso_visa"],
                 "modo_medida": kvars["modo_medida"].get().strip(),
-                "i_max_uA": float(kvars["i_max_uA"].get() or 10.0),
+                "i_max_uA": valor_i_max if unidad_i_max == "uA" else valor_i_max * (1e6 if unidad_i_max == "uA" else 1e3 if unidad_i_max == "mA" else 1.0),
+                "i_max_unit": unidad_i_max,
+                "i_max_A": valor_i_max * factor_i_max,
                 "superficie_um2": float(kvars["superficie_um2"].get()) if kvars["superficie_um2"].get() else None,
                 "irradiancia_mW_cm2": float(kvars["irradiancia_mW_cm2"].get()) if kvars["irradiancia_mW_cm2"].get() else None,
                 "v_inicial_mV": float(kvars["v_ini_dir"].get() or 0.0),

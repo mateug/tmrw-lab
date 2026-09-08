@@ -101,6 +101,8 @@ class StressFrame(ttk.Frame):
             self.dev[device] = {
                 key: create_variable(value) for key, value in curve.items()
             }
+            self.dev[device].setdefault("i_max_uA", create_variable(curve.get("i_max_uA", 10.0)))
+            self.dev[device].setdefault("i_max_unit", create_variable(curve.get("i_max_unit", "uA")))
             self.dev[device]["nombre"] = create_variable(
                 cfg.get("dispositivos", {}).get(device, {}).get("nombre", f"Estructura {device}")
             )
@@ -219,7 +221,14 @@ class StressFrame(ttk.Frame):
         self.field(panel, "V ini inversa (mV):", variables["v_ini_inv_mV"], 2, 0)
         self.field(panel, "V final inversa (V):", variables["v_fin_inv_V"], 2, 2)
         self.field(panel, "Paso inversa (mV):", variables["paso_inv_mV"], 2, 4)
-        self.field(panel, "I máxima (µA):", variables["i_max_uA"], 3, 0)
+        self.field(panel, "I máxima:", variables["i_max_uA"], 3, 0)
+        ttk.Combobox(
+            panel,
+            textvariable=variables["i_max_unit"],
+            values=["uA", "mA", "A"],
+            state="readonly",
+            width=5,
+        ).grid(row=3, column=2, sticky="w", padx=(ui(2), ui(8)))
 
         f_opts = ttk.Frame(panel, style="Params.TLabel")
         f_opts.grid(row=4, column=0, columnspan=5, sticky="ew", pady=ui(2))

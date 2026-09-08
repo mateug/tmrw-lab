@@ -274,8 +274,15 @@ def crear_panel_keithley_basico(parent, vars_dict):
     ttk.Label(f_barrido, text="Paso (mV):").pack(side="left")
     ttk.Entry(f_barrido, textvariable=vars_dict["paso_dir"], width=8).pack(side="left", padx=(ui(2), ui(10)))
 
-    ttk.Label(f_barrido, text="I_max (ÂµA):").pack(side="left")
-    ttk.Entry(f_barrido, textvariable=vars_dict["i_max_uA"], width=10).pack(side="left", padx=(ui(2), ui(10)))
+    ttk.Label(f_barrido, text="I_max:").pack(side="left")
+    ttk.Entry(f_barrido, textvariable=vars_dict["i_max_uA"], width=10).pack(side="left", padx=(ui(2), ui(6)))
+    ttk.Combobox(
+        f_barrido,
+        textvariable=vars_dict["i_max_unit"],
+        values=["uA", "mA", "A"],
+        state="readonly",
+        width=5,
+    ).pack(side="left", padx=(0, ui(10)))
 
     # Fila 5: Parámetros del barrido inverso
     f_inv = ttk.Frame(lf, style="Keithley.TFrame")

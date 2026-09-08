@@ -46,8 +46,8 @@ DEFAULT_CONFIG = {
         },
     "irradiancia_mW_cm2": None,
     "curva_iv": {
-        "A": {"v_ini_dir_mV": 0.0, "v_fin_dir_mV": 550.0, "paso_dir_mV": 10.0, "v_ini_inv_mV": "", "v_fin_inv_V": -11.0, "paso_inv_mV": 100.0, "i_max_uA": 10.0},
-        "B": {"v_ini_dir_mV": 0.0, "v_fin_dir_mV": 550.0, "paso_dir_mV": 10.0, "v_ini_inv_mV": "", "v_fin_inv_V": -11.0, "paso_inv_mV": 100.0, "i_max_uA": 10.0},
+        "A": {"v_ini_dir_mV": 0.0, "v_fin_dir_mV": 550.0, "paso_dir_mV": 10.0, "v_ini_inv_mV": "", "v_fin_inv_V": -11.0, "paso_inv_mV": 100.0, "i_max_uA": 10.0, "i_max_unit": "uA"},
+        "B": {"v_ini_dir_mV": 0.0, "v_fin_dir_mV": 550.0, "paso_dir_mV": 10.0, "v_ini_inv_mV": "", "v_fin_inv_V": -11.0, "paso_inv_mV": 100.0, "i_max_uA": 10.0, "i_max_unit": "uA"},
     },
     "dispositivos": {
         "A": {"nombre": "Estructura A", "superficie_um2": None},

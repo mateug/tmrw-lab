@@ -127,8 +127,9 @@ class PanelEjeEstructura(ttk.Frame):
 
         row2 = ttk.Frame(parent, style="Params.TFrame")
         row2.pack(fill="x", pady=ui(2))
-        ttk.Label(row2, text="I max (uA):", style="Params.TLabel").pack(side="left")
-        ttk.Entry(row2, textvariable=v["i_max_uA"], width=10).pack(side="left", padx=(ui(2), ui(8)))
+        ttk.Label(row2, text="I max:", style="Params.TLabel").pack(side="left")
+        ttk.Entry(row2, textvariable=v["i_max_uA"], width=10).pack(side="left", padx=(ui(2), ui(4)))
+        ttk.Combobox(row2, textvariable=v["i_max_unit"], values=["uA", "mA", "A"], state="readonly", width=5).pack(side="left", padx=(0, ui(8)))
         ttk.Label(row2, text="Superficie (um2):", style="Params.TLabel").pack(side="left")
         ttk.Entry(row2, textvariable=v["superficie_um2"], width=10).pack(side="left", padx=(ui(2), ui(8)))
         ttk.Label(row2, text="Irradiancia (mW/cm2):", style="Params.TLabel").pack(side="left")
@@ -264,8 +265,9 @@ class PanelEjeEstructura(ttk.Frame):
 
             row2 = ttk.Frame(block, style="Params.TFrame")
             row2.pack(fill="x", pady=ui(2))
-            ttk.Label(row2, text="I máx (µA):", style="Params.TLabel").pack(side="left")
-            ttk.Entry(row2, textvariable=kvars["i_max_uA"], width=10).pack(side="left", padx=(ui(2), ui(8)))
+            ttk.Label(row2, text="I máx:", style="Params.TLabel").pack(side="left")
+            ttk.Entry(row2, textvariable=kvars["i_max_uA"], width=10).pack(side="left", padx=(ui(2), ui(4)))
+            ttk.Combobox(row2, textvariable=kvars["i_max_unit"], values=["uA", "mA", "A"], state="readonly", width=5).pack(side="left", padx=(0, ui(8)))
             ttk.Label(row2, text="Superficie (um2):", style="Params.TLabel").pack(side="left")
             ttk.Entry(row2, textvariable=kvars["superficie_um2"], width=10).pack(side="left", padx=(ui(2), ui(8)))
             ttk.Label(row2, text="Irradiancia (mW/cm2):", style="Params.TLabel").pack(side="left")

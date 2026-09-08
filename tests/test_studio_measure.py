@@ -100,6 +100,22 @@ class StudioMeasureTests(unittest.TestCase):
         self.assertEqual(local["superficie_um2"], 2500.0)
         self.assertEqual(local["irradiancia_mW_cm2"], 12.5)
 
+    def test_configuracion_keithley_convierte_i_max_segun_unidad(self):
+        cfg = {
+            "recurso_visa": "AUTO",
+            "i_max_uA": 10.0,
+            "i_max_unit": "uA",
+        }
+
+        local = construir_configuracion_keithley(
+            cfg,
+            overrides={"i_max_value": 1.5, "i_max_unit": "mA"},
+        )
+
+        self.assertEqual(local["i_max_unit"], "mA")
+        self.assertAlmostEqual(local["i_max_A"], 1.5e-3)
+        self.assertAlmostEqual(local["i_max_uA"], 1500.0)
+
     @patch("core.instrument.keithley.enviar_go_to_local_visa")
     @patch("core.instrument.keithley.conectar_y_verificar")
     def test_liberar_manual_usa_detector_con_auto(self, conectar, go_local):
