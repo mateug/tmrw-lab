@@ -12,12 +12,6 @@ from core.instrument.registry import (
 from core.instrument.solar_simulator import crear_controlador_simulador_solar
 
 
-CANAL_SOLAR_TEST = [
-    "390", "450", "515", "cool_white", "warm_white", "600",
-    "630", "660", "730", "850", "950",
-]
-
-
 def _esperar_abortable(segundos: float, evento_aborto) -> None:
     limite = time.monotonic() + max(0.0, float(segundos))
     while time.monotonic() < limite:
@@ -32,7 +26,7 @@ def probar_simulador_solar(
     log_callback: Callable[[str], None],
     plantilla_comando: str = "<ch{channel}:{intensity}>",
 ) -> None:
-    """Prueba potencia y todos los canales LED del simulador solar."""
+    """Prueba el simulador solar con un único encendido a 50 mW/cm2."""
     simulador = None
     try:
         simulador = crear_controlador_simulador_solar(
@@ -40,16 +34,9 @@ def probar_simulador_solar(
         )
         simulador.connect()
         registrar_simulador_solar_activo(simulador)
-        log_callback("[TEST] Encendiendo potencia: 100 mW/cm2\n")
-        simulador.encender_y_verificar(100.0)
+        log_callback("[TEST] Encendiendo potencia: 50 mW/cm2\n")
+        simulador.encender_y_verificar(50.0)
         _esperar_abortable(1.0, evento_aborto)
-        for index, canal in enumerate(CANAL_SOLAR_TEST, 1):
-            _esperar_abortable(0.2, evento_aborto)
-            simulador.apagar()
-            simulador.enviar_comando_personalizado(
-                plantilla_comando, channel=canal, intensity=50
-            )
-            log_callback(f"[TEST] LED {index}/{len(CANAL_SOLAR_TEST)}: {canal} al 50%\n")
         simulador.apagar()
         log_callback("[OK] Prueba del simulador solar completada.\n")
     finally:
